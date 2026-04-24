@@ -13,6 +13,8 @@ import { OllamaProvider } from './providers/ollama';
 import { registry } from './core/registry';
 import { toolRegistry } from './core/tools/registry';
 import { methodRegistry } from './core/method-registry';
+import { patternRegistry } from './core/pattern-registry';
+import { registerAllPatterns } from './patterns';
 import { runAgentLoop } from './core/agent';
 import type {
   IModelProvider,
@@ -40,6 +42,12 @@ function registerTools(): void {
 // 메서드 등록 (Sprint 3)
 registerAllMethods();
 
+// 패턴 등록 (Sprint 5)
+const allPatterns = registerAllPatterns();
+for (const p of allPatterns) {
+  patternRegistry.register(p);
+}
+
 const HELP_TEXT = `
 \x1b[1m사용 가능한 명령어:\x1b[0m
   /model <name>    - 모델 전환
@@ -48,6 +56,7 @@ const HELP_TEXT = `
   /models          - 사용 가능한 모델 목록
   /tools           - 등록된 툴 목록
   /methods         - 활성화된 메서드 목록
+  /patterns        - 패턴 분류 결과 표시
   /help            - 이 도움말 표시
   /exit            - 종료`;
 
@@ -214,9 +223,19 @@ async function runChat(options: ChatOptions): Promise<void> {
           console.log(`  ${status} \x1b[33m${m.id} ${m.name}\x1b[0m  ${m.description.slice(0, 60)}`);
         }
         console.log();
-        console.log('  \x1b[32m[C]\x1b[0m=common  \x1b[36m[P]\x1b[0m=project  (현재 모두 미구현, Sprint 4+에서 구현)');
+        console.log('  \x1b[32m[C]\x1b[0m=common  \x1b[36m[P]\x1b[0m=project');
         console.log();
       }
+      return true;
+    }
+
+    if (trimmed === '/patterns') {
+      const patterns = patternRegistry.list();
+      console.log(`\n\x1b[1m등록된 패턴 (${patterns.length}개):\x1b[0m`);
+      for (const p of patterns) {
+        console.log(`  \x1b[33m${p.id}\x1b[0m ${p.name}  ${p.description}`);
+      }
+      console.log();
       return true;
     }
 
@@ -248,6 +267,13 @@ async function runChat(options: ChatOptions): Promise<void> {
   /** 사용자 메시지 전송 + 툴 에이전트 루프 */
   async function sendMessage(content: string): Promise<void> {
     isGenerating = true;
+
+    // 패턴 분류 (Sprint 5)
+    const classification = patternRegistry.classify(content);
+    if (classification) {
+      process.stdout.write(`\x1b[2m[${classification.pattern.id} ${classification.pattern.name} ${(classification.score * 100).toFixed(0)}%]\x1b[0m `);
+    }
+
     messages.push({ role: 'user', content });
 
     abortController = new AbortController();
@@ -502,6 +528,12 @@ async function runPipeMode(): Promise<void> {
     }
 
     // 파이프 모드에서도 툴 에이전트 루프 사용
+    // 패턴 분류 (Sprint 5)
+    const pipeClassification = patternRegistry.classify(trimmed);
+    if (pipeClassification) {
+      process.stdout.write(`\x1b[2m[${pipeClassification.pattern.id} ${pipeClassification.pattern.name} ${(pipeClassification.score * 100).toFixed(0)}%]\x1b[0m `);
+    }
+
     const messages: ChatMessage[] = [];
     const toolNames = toolRegistry.all().map((t) => t.name);
     const toolSystemBase = [
