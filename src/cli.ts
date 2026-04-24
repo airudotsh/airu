@@ -12,13 +12,12 @@ import { GLMProvider } from './providers/glm';
 import { OllamaProvider } from './providers/ollama';
 import { registry } from './core/registry';
 import { toolRegistry } from './core/tools/registry';
+import { runAgentLoop } from './core/agent';
 import type {
   IModelProvider,
   ChatMessage,
   StreamChunk,
-  ToolSchema,
 } from './core/provider';
-import type { ITool } from './core/tools/tool';
 import { loadConfig, saveConfig, ensureDefaultConfig, getConfigPath } from './core/config';
 
 // 툴 등록
@@ -63,27 +62,6 @@ interface ChatOptions {
   system?: string;
 }
 
-// --- 컨텍스트 압축 ---
-const MAX_TOKENS_ESTIMATE = 6000; // 압축 임계값
-
-/** messages 배열의 대략적 토큰 수 추정 (글자 * 1.5) */
-function estimateTokens(messages: ChatMessage[]): number {
-  return messages.reduce((sum, m) => sum + Math.ceil(m.content.length * 1.5), 0);
-}
-
-/** 오래된 대화를 압축 */
-function compressContext(messages: ChatMessage[]): ChatMessage[] {
-  const system = messages.filter(m => m.role === 'system');
-  const recent = messages.filter(m => m.role !== 'system').slice(-6);
-
-  const summary = {
-    role: 'system' as const,
-    content: `이전 대화의 요약: ${messages.filter(m => m.role !== 'system').length}번의 메시지가 있었으며, 주요 주제는 "${messages[messages.length - 2]?.content?.slice(0, 50) || '없음'}..." 관련이었습니다.`,
-  };
-
-  return [...system, summary, ...recent];
-}
-
 // --- Provider ---
 async function createAndInitProvider(
   name: string,
@@ -111,112 +89,6 @@ function formatError(error: string): string {
     return `API 키가 유효하지 않습니다.\n  ~/.airu/.env 파일에 ZAI_API_KEY를 설정하세요.`;
   }
   return error;
-}
-
-// --- 툴 실행 ---
-async function executeToolCall(
-  toolName: string,
-  args: Record<string, unknown>,
-): Promise<{ success: boolean; output: string; error?: string }> {
-  const tool = toolRegistry.get(toolName);
-  if (!tool) {
-    return { success: false, output: '', error: `Unknown tool: ${toolName}` };
-  }
-
-  try {
-    const result = await tool.run(args);
-    return result;
-  } catch (e) {
-    return { success: false, output: '', error: (e as Error).message };
-  }
-}
-
-// --- 에이전트 루프 ---
-/** 툴 에이전트 메시지 전송 (tool calling 포함) */
-async function agentChat(
-  provider: IModelProvider,
-  model: string,
-  messages: ChatMessage[],
-  options: { signal?: AbortSignal } = {},
-): Promise<{
-  content: string;
-  toolCalls: ToolCallResult[];
-  error?: string;
-}> {
-  const tools = toolRegistry.all();
-  const openAiTools: ToolSchema[] = tools.map(tool => ({
-    type: 'function',
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: { type: 'object', properties: tool.schema.properties, required: tool.schema.required },
-    },
-  }));
-
-  let fullResponse = '';
-  // 다중 툴 콜 지원: index별 Map
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pendingCalls: Map<number, any> = new Map();
-  let hasError: string | null = null;
-
-  await provider.chat(messages, {
-    model,
-    signal: options.signal,
-    tools: openAiTools.length > 0 ? openAiTools : undefined,
-    onChunk: (chunk: StreamChunk) => {
-      switch (chunk.type) {
-        case 'content':
-          if (chunk.content) fullResponse += chunk.content;
-          break;
-        case 'tool_call': {
-          // 모든 delta를 index별 Map에 누적
-          const deltas = chunk.toolCallDelta
-            ? [chunk.toolCallDelta]
-            : chunk.toolCallDeltas || [];
-
-          for (const delta of deltas) {
-            const idx = delta.index ?? 0;
-            if (!pendingCalls.has(idx)) {
-              pendingCalls.set(idx, { id: delta.id || '', name: '', arguments: '' });
-            }
-            const call = pendingCalls.get(idx)!;
-            if (delta.id) call.id = delta.id;
-            if (delta.function?.name) call.name = delta.function.name;
-            if (delta.function?.arguments) call.arguments += delta.function.arguments;
-          }
-          break;
-        }
-        case 'error':
-          hasError = chunk.error ?? 'unknown error';
-          break;
-        case 'done':
-        case 'thinking':
-          break;
-      }
-    },
-  });
-
-  // error chunk가 있었으면 반환
-  if (hasError) {
-    return { content: fullResponse, toolCalls: [], error: hasError };
-  }
-
-  // Map을 array로 변환
-  const toolCalls: ToolCallResult[] = Array.from(pendingCalls.values())
-    .filter((call) => call.name)
-    .map((call) => ({
-      id: call.id || `call_${Date.now()}`,
-      name: call.name,
-      arguments: call.arguments,
-    }));
-
-  return { content: fullResponse, toolCalls };
-}
-
-interface ToolCallResult {
-  id: string;
-  name: string;
-  arguments: string;
 }
 
 // --- 채팅 실행 ---
@@ -343,86 +215,23 @@ async function runChat(options: ChatOptions): Promise<void> {
     isGenerating = true;
     messages.push({ role: 'user', content });
 
-    // 컨텍스트 압축 체크
-    if (estimateTokens(messages) > MAX_TOKENS_ESTIMATE) {
-      const compressed = compressContext(messages);
-      messages.length = 0;
-      messages.push(...compressed);
-      process.stdout.write('\x1b[2m[대화가 압축되었습니다]\x1b[0m ');
-    }
-
     abortController = new AbortController();
     process.stdout.write('\x1b[35m...\x1b[0m ');
 
-    let assistantContent = '';
+    const { content: assistantContent, hadError } = await runAgentLoop(
+      activeProvider,
+      currentModel,
+      messages,
+      { signal: abortController.signal },
+    );
 
-    // 툴 에이전트 루프 (최대 5단계)
-    const MAX_TOOL_LOOPS = 5;
-    for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
-      const { content, toolCalls, error } = await agentChat(activeProvider, currentModel, messages, {
-        signal: abortController.signal,
-      });
-
-      // Critical 3: provider error chunk 처리
-      if (error) {
-        process.stdout.write('\r\x1b[K');
-        console.log(`\x1b[31m[오류] ${formatError(error)}\x1b[0m`);
-        assistantContent = '';
-        break;
-      }
-
-      if (!content && toolCalls.length === 0) {
-        // 빈 응답 → 종료
-        assistantContent = '';
-        break;
-      }
-
-      assistantContent = content;
-
-      // 툴 콜 없으면 종료
-      if (toolCalls.length === 0) {
-        process.stdout.write(assistantContent);
-        process.stdout.write('\n');
-        break;
-      }
-
-      // Critical 1: assistant + tool_calls 메시지를 툴 결과보다 먼저 추가
-      messages.push({
-        role: 'assistant',
-        content: assistantContent,
-        tool_calls: toolCalls.map((tc) => ({
-          id: tc.id,
-          type: 'function' as const,
-          function: { name: tc.name, arguments: tc.arguments },
-        })),
-      });
-
-      // 각 툴 실행
-      for (const tc of toolCalls) {
-        let args: Record<string, unknown> = {};
-        try {
-          args = JSON.parse(tc.arguments || '{}');
-        } catch {
-          args = {};
-        }
-
-        process.stdout.write('\r\x1b[K');
-        console.log(`\x1b[33m[툴 실행 중: ${tc.name}]\x1b[0m`);
-
-        const result = await executeToolCall(tc.name, args);
-        messages.push({
-          role: 'tool',
-          content: result.success ? result.output : `Error: ${result.error || 'unknown'}`,
-          tool_call_id: tc.id,
-          name: tc.name,
-        });
-      }
-
-      process.stdout.write('\x1b[35m...\x1b[0m ');
+    if (hadError || (!assistantContent && messages[messages.length - 1]?.role !== 'tool')) {
+      // provider/network error — last message in messages is already error or empty
+      // formatError applied inside runAgentLoop via agent.ts console output
     }
 
-    if (assistantContent) {
-      messages.push({ role: 'assistant', content: assistantContent });
+    if (!assistantContent && !hadError) {
+      // empty response, already printed by runAgentLoop
     }
 
     isGenerating = false;
