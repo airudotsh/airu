@@ -20,8 +20,8 @@ class PlanPattern extends KeywordPattern {
   readonly id = 'P2';
   readonly name = 'Plan';
   readonly description = '작업 계획 수립';
-  protected readonly keywordsKo = ['계획', '계획해', '기획', '로드맵', '전략', '어떻게 해', '순서'];
-  protected readonly keywordsEn = ['plan', 'roadmap', 'strategy', 'how to', 'steps', 'approach'];
+  protected readonly keywordsKo = ['계획', '계획해', '기획', '로드맵', '전략', '어떻게 해', '순서', '설계', '아키텍처'];
+  protected readonly keywordsEn = ['plan', 'roadmap', 'strategy', 'how to', 'steps', 'approach', 'design', 'architecture'];
   protected readonly methodIds = ['M1', 'M2', 'M3']; // 인식 + 리즌링 + 탐색
 }
 
@@ -61,7 +61,7 @@ class TestPattern extends KeywordPattern {
   readonly name = 'Test';
   readonly description = '테스트 작성 및 실행';
   protected readonly keywordsKo = ['테스트', '테스트해', '검증', '확인', '유닛테스트', 'e2e', '테스트 코드'];
-  protected readonly keywordsEn = ['test', 'testing', 'verify', 'unit test', 'e2e', 'spec', 'test code'];
+  protected readonly keywordsEn = ['test', 'testing', 'verify', 'unit test', 'e2e', 'spec', 'test code', 'integration test', 'regression', 'smoke test'];
   protected readonly weight = 1.3;
   protected readonly methodIds = ['M6', 'M7']; // 실행 + 검증
 }
@@ -71,8 +71,8 @@ class DebugPattern extends KeywordPattern {
   readonly id = 'P7';
   readonly name = 'Debug';
   readonly description = '버그 수정';
-  protected readonly keywordsKo = ['버그', '디버그', '에러', '오류', '안 돼', '고장', '트러블슈팅', '왜 안'];
-  protected readonly keywordsEn = ['bug', 'debug', 'error', 'fix', 'broken', 'crash', 'issue', 'troubleshoot'];
+  protected readonly keywordsKo = ['버그', '디버그', '에러', '오류', '안 돼', '고장', '트러블슈팅', '왜 안', '실패', '재현', '예외'];
+  protected readonly keywordsEn = ['bug', 'debug', 'error', 'fix', 'broken', 'crash', 'issue', 'troubleshoot', 'exception', 'stack trace', 'failing'];
   protected readonly methodIds = ['M1', 'M6', 'M7']; // 인식 + 실행 + 검증
   protected readonly weight = 1.2;
 }
@@ -92,8 +92,8 @@ class ReviewPattern extends KeywordPattern {
   readonly id = 'P9';
   readonly name = 'Review';
   readonly description = '코드/디자인 리뷰';
-  protected readonly keywordsKo = ['리뷰', '리뷰해', '검토', '피드백', '평가', '코드리뷰'];
-  protected readonly keywordsEn = ['review', 'feedback', 'evaluate', 'assess', 'critique', 'code review'];
+  protected readonly keywordsKo = ['리뷰', '리뷰해', '검토', '피드백', '평가', '코드리뷰', '살펴봐', '점검'];
+  protected readonly keywordsEn = ['review', 'feedback', 'evaluate', 'assess', 'critique', 'code review', 'audit', 'inspect'];
   protected readonly methodIds = ['M1', 'M2', 'M7']; // 인식 + 리즌링 + 검증
 }
 

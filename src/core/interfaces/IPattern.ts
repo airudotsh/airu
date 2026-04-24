@@ -33,22 +33,22 @@ export abstract class KeywordPattern implements IPattern {
   match(input: string): number {
     const lower = input.toLowerCase();
     const allKeywords = [...this.keywordsKo, ...this.keywordsEn];
-    let matchCount = 0;
+    const matched = new Set<number>(); // 인덱스로 중복 방지
 
-    for (const kw of allKeywords) {
-      if (lower.includes(kw.toLowerCase())) {
-        matchCount++;
+    for (let i = 0; i < allKeywords.length; i++) {
+      if (lower.includes(allKeywords[i].toLowerCase())) {
+        matched.add(i);
       }
     }
 
-    if (matchCount === 0) return 0;
+    if (matched.size === 0) return 0;
 
     // 매칭 키워드 1개 → 0.5, 2개 → 0.75, 3개+ → 1.0
-    const baseScore = Math.min(0.25 + (matchCount * 0.25), 1.0);
+    const baseScore = Math.min(0.25 + (matched.size * 0.25), 1.0);
     return Math.min(baseScore * this.weight, 1.0);
   }
 
   methods(): string[] {
-    return this.methodIds;
+    return [...this.methodIds]; // defensive copy
   }
 }
