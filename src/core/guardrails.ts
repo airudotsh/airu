@@ -9,10 +9,12 @@ export type GuardrailEvent =
   | { type: 'loop_abort'; iteration: number; reason: string }
   | { type: 'time_warning'; elapsed: number; limit: number }
   | { type: 'time_abort'; elapsed: number; limit: number }
-  | { type: 'error_classified'; error: string; category: ErrorCategory; action: string }
+  | { type: 'error_classified'; error: string; category: ErrorCategory; action: GuardrailAction }
   | { type: 'retry'; attempt: number; maxRetries: number; reason: string }
   | { type: 'verification_pass'; step: string }
   | { type: 'verification_fail'; step: string; reason: string };
+
+export type GuardrailAction = 'retry' | 'fallback' | 'abort' | 'skip';
 
 export type ErrorCategory =
   | 'network'       // 네트워크/연결 문제
@@ -32,14 +34,14 @@ export function classifyError(error: string): ErrorCategory {
   if (/econnrefused|econnreset|enotfound|network/i.test(lower)) return 'network';
   if (/rate.limit|429|too many requests/i.test(lower)) return 'rate_limit';
   if (/invalid|malformed|schema|validation|bad request/i.test(lower)) return 'validation';
-  if (/tool|execute|run|command/i.test(lower)) return 'tool';
-  if (/model|glm|ollama|api|internal/i.test(lower)) return 'model';
+  if (/tool|execute|run|command|failed/i.test(lower)) return 'tool';
+  if (/model response|model error|generation|content filter|refusal/i.test(lower)) return 'model';
   return 'unknown';
 }
 
 /** 에러 카테고리 → 권장 조치 */
 export function recommendedAction(category: ErrorCategory): {
-  action: 'retry' | 'fallback' | 'abort' | 'skip';
+  action: GuardrailAction;
   maxRetries: number;
   delayMs: number;
   message: string;
@@ -125,6 +127,8 @@ export class Guardrails {
   private iteration = 0;
   private startTime = Date.now();
   private lastWarningTime = 0;
+  private retryCount = 0; // 누적 재시도 횟수
+  private readonly maxTotalRetries: number; // 전체 재시도 한도
 
   readonly logger: ExecutionLogger;
 
@@ -140,6 +144,7 @@ export class Guardrails {
     this.abortAtIteration = options.abortAtIteration ?? 15;
     this.maxTimeMs = options.maxTimeMs ?? 5 * 60 * 1000; // 5분
     this.warnAtTimeMs = options.warnAtTimeMs ?? 4 * 60 * 1000; // 4분
+    this.maxTotalRetries = (this.maxIterations - 1) * 2; // 안전상 상한
     this.logger = new ExecutionLogger();
   }
 
@@ -185,10 +190,11 @@ export class Guardrails {
     this.iteration = 0;
     this.startTime = Date.now();
     this.lastWarningTime = 0;
+    this.retryCount = 0;
     this.logger.reset();
   }
 
-  /** 에러 처리 + 자동 재시도 */
+  /** 에러 처리 + 자동 재시도. 누적 재시도 한도도 적용 */
   async handleError(error: string): Promise<{
     shouldRetry: boolean;
     delayMs: number;
@@ -212,10 +218,22 @@ export class Guardrails {
       return { shouldRetry: false, delayMs: 0, message };
     }
 
+    // 누적 재시도 횟수 초과 시 중단
+    if (this.retryCount >= this.maxTotalRetries) {
+      this.logger.log({
+        type: 'error_classified',
+        error: 'max total retries exceeded',
+        category: 'unknown',
+        action: 'abort',
+      });
+      return { shouldRetry: false, delayMs: 0, message: '재시도 한도 초과, 중단.' };
+    }
+
+    this.retryCount++;
     this.logger.log({
       type: 'retry',
-      attempt: this.iteration,
-      maxRetries,
+      attempt: this.retryCount,
+      maxRetries: this.maxTotalRetries,
       reason: error.slice(0, 80),
     });
 

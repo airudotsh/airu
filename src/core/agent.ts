@@ -190,7 +190,8 @@ export async function executeToolCall(
     const result = await tool.run(args);
     return result;
   } catch (e) {
-    return { success: false, output: '', error: (e as Error).message };
+    const message = e instanceof Error ? e.message : String(e);
+    return { success: false, output: '', error: message };
   }
 }
 
@@ -284,7 +285,10 @@ export async function runAgentLoop(
     for (const tc of toolCalls) {
       let args: Record<string, unknown> = {};
       try {
-        args = JSON.parse(tc.arguments || '{}');
+        const parsed = JSON.parse(tc.arguments || '{}');
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          args = parsed as Record<string, unknown>;
+        }
       } catch {
         args = {};
       }
@@ -295,14 +299,17 @@ export async function runAgentLoop(
       const result = await executeToolCall(tc.name, args);
 
       // 툴 실행 실패 → Guardrails 에러 분류
+      let finalResult = result;
       if (!result.success && result.error) {
         const { shouldRetry, delayMs, message } = await guardrails.handleError(result.error);
         if (shouldRetry) {
           process.stdout.write(`\r\x1b[33m${message}\x1b[0m `);
           if (delayMs > 0) await sleep(delayMs);
-          // 재시도: 같은 툴 한 번 더
+          // 재시도: 같은 툴 한 번 더 — 성공하면 그 결과 사용
           const retryResult = await executeToolCall(tc.name, args);
-          if (!retryResult.success) {
+          if (retryResult.success) {
+            finalResult = retryResult;
+          } else {
             guardrails.logger.log({ type: 'error_classified', error: retryResult.error || '', category: 'tool', action: 'fallback' });
           }
         }
@@ -310,7 +317,7 @@ export async function runAgentLoop(
 
       messages.push({
         role: 'tool',
-        content: result.success ? result.output : `Error: ${result.error || 'unknown'}`,
+        content: finalResult.success ? finalResult.output : `Error: ${finalResult.error || 'unknown'}`,
         tool_call_id: tc.id,
         name: tc.name,
       });
