@@ -1,7 +1,14 @@
 /**
  * Ollama Provider - 로컬 Ollama API
+ * Tool calling 지원
  */
-import type { IModelProvider, ProviderConfig, ChatMessage, StreamChunk } from '../core/provider';
+import type {
+  IModelProvider,
+  ProviderConfig,
+  ChatMessage,
+  StreamChunk,
+  ToolSchema,
+} from '../core/provider';
 import { parseSSEStream, ollamaSSEParser } from '../core/sse';
 import { loadConfig } from '../core/config';
 
@@ -58,10 +65,11 @@ export class OllamaProvider implements IModelProvider {
       model?: string;
       signal?: AbortSignal;
       onChunk: (chunk: StreamChunk) => void;
+      tools?: ToolSchema[];
     }
   ): Promise<void> {
     const model = options.model || this.availableModels[0] || 'qwen3.6';
-    const { signal, onChunk } = options;
+    const { signal, onChunk, tools } = options;
 
     const controller = new AbortController();
     if (signal) {
@@ -69,10 +77,21 @@ export class OllamaProvider implements IModelProvider {
     }
 
     try {
+      const body: Record<string, unknown> = {
+        model,
+        messages,
+        stream: true,
+      };
+
+      // Ollama tool calling: tools를 tools 파라미터로 전송
+      if (tools && tools.length > 0) {
+        body.tools = tools;
+      }
+
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, messages, stream: true }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
 

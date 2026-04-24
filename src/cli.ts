@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /**
  * airu-cli - AI 채팅 CLI
+ * Sprint 2: 툴 에이전트 루프 + 대화 컨텍스트 압축
  */
 import { Command } from 'commander';
 import * as readline from 'readline';
@@ -11,7 +12,12 @@ import { GLMProvider } from './providers/glm';
 import { OllamaProvider } from './providers/ollama';
 import { registry } from './core/registry';
 import { toolRegistry } from './core/tools/registry';
-import type { IModelProvider, ChatMessage, StreamChunk } from './core/provider';
+import type {
+  IModelProvider,
+  ChatMessage,
+  StreamChunk,
+  ToolSchema,
+} from './core/provider';
 import type { ITool } from './core/tools/tool';
 import { loadConfig, saveConfig, ensureDefaultConfig, getConfigPath } from './core/config';
 
@@ -57,10 +63,31 @@ interface ChatOptions {
   system?: string;
 }
 
-/** Provider 인스턴스 생성 + async 초기화 */
+// --- 컨텍스트 압축 ---
+const MAX_TOKENS_ESTIMATE = 6000; // 압축 임계값
+
+/** messages 배열의 대략적 토큰 수 추정 (글자 * 1.5) */
+function estimateTokens(messages: ChatMessage[]): number {
+  return messages.reduce((sum, m) => sum + Math.ceil(m.content.length * 1.5), 0);
+}
+
+/** 오래된 대화를 압축 */
+function compressContext(messages: ChatMessage[]): ChatMessage[] {
+  const system = messages.filter(m => m.role === 'system');
+  const recent = messages.filter(m => m.role !== 'system').slice(-6);
+
+  const summary = {
+    role: 'system' as const,
+    content: `이전 대화의 요약: ${messages.filter(m => m.role !== 'system').length}번의 메시지가 있었으며, 주요 주제는 "${messages[messages.length - 2]?.content?.slice(0, 50) || '없음'}..." 관련이었습니다.`,
+  };
+
+  return [...system, summary, ...recent];
+}
+
+// --- Provider ---
 async function createAndInitProvider(
   name: string,
-  config: ReturnType<typeof ensureDefaultConfig>
+  config: ReturnType<typeof ensureDefaultConfig>,
 ): Promise<IModelProvider> {
   let provider: IModelProvider;
   if (name === 'glm') {
@@ -75,12 +102,10 @@ async function createAndInitProvider(
   return provider;
 }
 
-/** 인증 에러인지 확인 */
 function isAuthError(error: string): boolean {
   return /401|403|token expired|incorrect|unauthorized/i.test(error);
 }
 
-/** 에러 메시지 포맷 */
 function formatError(error: string): string {
   if (isAuthError(error)) {
     return `API 키가 유효하지 않습니다.\n  ~/.airu/.env 파일에 ZAI_API_KEY를 설정하세요.`;
@@ -88,6 +113,113 @@ function formatError(error: string): string {
   return error;
 }
 
+// --- 툴 실행 ---
+async function executeToolCall(
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<{ success: boolean; output: string; error?: string }> {
+  const tool = toolRegistry.get(toolName);
+  if (!tool) {
+    return { success: false, output: '', error: `Unknown tool: ${toolName}` };
+  }
+
+  try {
+    const result = await tool.run(args);
+    return result;
+  } catch (e) {
+    return { success: false, output: '', error: (e as Error).message };
+  }
+}
+
+// --- 에이전트 루프 ---
+/** 툴 에이전트 메시지 전송 (tool calling 포함) */
+async function agentChat(
+  provider: IModelProvider,
+  model: string,
+  messages: ChatMessage[],
+  options: { signal?: AbortSignal } = {},
+): Promise<{
+  content: string;
+  toolCalls: ToolCallResult[];
+  error?: string;
+}> {
+  const tools = toolRegistry.all();
+  const openAiTools: ToolSchema[] = tools.map(tool => ({
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: { type: 'object', properties: tool.schema.properties, required: tool.schema.required },
+    },
+  }));
+
+  let fullResponse = '';
+  // 다중 툴 콜 지원: index별 Map
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pendingCalls: Map<number, any> = new Map();
+  let hasError: string | null = null;
+
+  await provider.chat(messages, {
+    model,
+    signal: options.signal,
+    tools: openAiTools.length > 0 ? openAiTools : undefined,
+    onChunk: (chunk: StreamChunk) => {
+      switch (chunk.type) {
+        case 'content':
+          if (chunk.content) fullResponse += chunk.content;
+          break;
+        case 'tool_call': {
+          // 모든 delta를 index별 Map에 누적
+          const deltas = chunk.toolCallDelta
+            ? [chunk.toolCallDelta]
+            : chunk.toolCallDeltas || [];
+
+          for (const delta of deltas) {
+            const idx = delta.index ?? 0;
+            if (!pendingCalls.has(idx)) {
+              pendingCalls.set(idx, { id: delta.id || '', name: '', arguments: '' });
+            }
+            const call = pendingCalls.get(idx)!;
+            if (delta.id) call.id = delta.id;
+            if (delta.function?.name) call.name = delta.function.name;
+            if (delta.function?.arguments) call.arguments += delta.function.arguments;
+          }
+          break;
+        }
+        case 'error':
+          hasError = chunk.error ?? 'unknown error';
+          break;
+        case 'done':
+        case 'thinking':
+          break;
+      }
+    },
+  });
+
+  // error chunk가 있었으면 반환
+  if (hasError) {
+    return { content: fullResponse, toolCalls: [], error: hasError };
+  }
+
+  // Map을 array로 변환
+  const toolCalls: ToolCallResult[] = Array.from(pendingCalls.values())
+    .filter((call) => call.name)
+    .map((call) => ({
+      id: call.id || `call_${Date.now()}`,
+      name: call.name,
+      arguments: call.arguments,
+    }));
+
+  return { content: fullResponse, toolCalls };
+}
+
+interface ToolCallResult {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+// --- 채팅 실행 ---
 async function runChat(options: ChatOptions): Promise<void> {
   const config = ensureDefaultConfig();
   const providerName = options.provider || config.provider || 'glm';
@@ -103,7 +235,6 @@ async function runChat(options: ChatOptions): Promise<void> {
   const model = options.model || config.model || 'glm-5.1';
   const systemPrompt = options.system || config.systemPrompt;
 
-  // 컨텍스트
   const messages: ChatMessage[] = [];
   if (systemPrompt) {
     messages.push({ role: 'system', content: systemPrompt });
@@ -112,7 +243,6 @@ async function runChat(options: ChatOptions): Promise<void> {
   let currentModel = model;
   let currentProvider = providerName;
 
-  // 웰컴 메시지
   console.log(WELCOME_TEXT);
   console.log(`\x1b[2m  ${currentProvider}/${currentModel}  |  /help\x1b[0m`);
   console.log();
@@ -208,39 +338,91 @@ async function runChat(options: ChatOptions): Promise<void> {
     return false;
   }
 
+  /** 사용자 메시지 전송 + 툴 에이전트 루프 */
   async function sendMessage(content: string): Promise<void> {
     isGenerating = true;
     messages.push({ role: 'user', content });
 
-    abortController = new AbortController();
-    let fullResponse = '';
+    // 컨텍스트 압축 체크
+    if (estimateTokens(messages) > MAX_TOKENS_ESTIMATE) {
+      const compressed = compressContext(messages);
+      messages.length = 0;
+      messages.push(...compressed);
+      process.stdout.write('\x1b[2m[대화가 압축되었습니다]\x1b[0m ');
+    }
 
+    abortController = new AbortController();
     process.stdout.write('\x1b[35m...\x1b[0m ');
 
-    await activeProvider.chat(messages, {
-      model: currentModel,
-      signal: abortController.signal,
-      onChunk: (chunk: StreamChunk) => {
-        switch (chunk.type) {
-          case 'content':
-            if (chunk.content) process.stdout.write(chunk.content);
-            fullResponse += chunk.content ?? '';
-            break;
-          case 'thinking':
-            break;
-          case 'error':
-            process.stdout.write('\r\x1b[K'); // 로딩 표시 지우기
-            console.log(`\x1b[31m[오류] ${formatError(chunk.error ?? 'unknown error')}\x1b[0m`);
-            break;
-          case 'done':
-            console.log();
-            break;
-        }
-      },
-    });
+    let assistantContent = '';
 
-    if (fullResponse) {
-      messages.push({ role: 'assistant', content: fullResponse });
+    // 툴 에이전트 루프 (최대 5단계)
+    const MAX_TOOL_LOOPS = 5;
+    for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
+      const { content, toolCalls, error } = await agentChat(activeProvider, currentModel, messages, {
+        signal: abortController.signal,
+      });
+
+      // Critical 3: provider error chunk 처리
+      if (error) {
+        process.stdout.write('\r\x1b[K');
+        console.log(`\x1b[31m[오류] ${formatError(error)}\x1b[0m`);
+        assistantContent = '';
+        break;
+      }
+
+      if (!content && toolCalls.length === 0) {
+        // 빈 응답 → 종료
+        assistantContent = '';
+        break;
+      }
+
+      assistantContent = content;
+
+      // 툴 콜 없으면 종료
+      if (toolCalls.length === 0) {
+        process.stdout.write(assistantContent);
+        process.stdout.write('\n');
+        break;
+      }
+
+      // Critical 1: assistant + tool_calls 메시지를 툴 결과보다 먼저 추가
+      messages.push({
+        role: 'assistant',
+        content: assistantContent,
+        tool_calls: toolCalls.map((tc) => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: { name: tc.name, arguments: tc.arguments },
+        })),
+      });
+
+      // 각 툴 실행
+      for (const tc of toolCalls) {
+        let args: Record<string, unknown> = {};
+        try {
+          args = JSON.parse(tc.arguments || '{}');
+        } catch {
+          args = {};
+        }
+
+        process.stdout.write('\r\x1b[K');
+        console.log(`\x1b[33m[툴 실행 중: ${tc.name}]\x1b[0m`);
+
+        const result = await executeToolCall(tc.name, args);
+        messages.push({
+          role: 'tool',
+          content: result.success ? result.output : `Error: ${result.error || 'unknown'}`,
+          tool_call_id: tc.id,
+          name: tc.name,
+        });
+      }
+
+      process.stdout.write('\x1b[35m...\x1b[0m ');
+    }
+
+    if (assistantContent) {
+      messages.push({ role: 'assistant', content: assistantContent });
     }
 
     isGenerating = false;
@@ -270,7 +452,7 @@ async function runChat(options: ChatOptions): Promise<void> {
   }
 }
 
-// 명령어: init
+// --- 명령어들 ---
 function runInit(): void {
   const configDir = path.join(os.homedir(), '.airu');
   const configPath = path.join(configDir, 'airu.config.yaml');
@@ -294,11 +476,10 @@ function runInit(): void {
 
   console.log(`\x1b[36m[설정 파일이 생성되었습니다: ${configPath}]\x1b[0m`);
   console.log(`\x1b[2mAPI 키를 설정하세요:\x1b[0m`);
-  console.log(`\x1b[2m  echo "ZAI_API_KEY=your-key" > ${configDir}/.env\x1b[0m`);
+  console.log(`\x1b[2m  echo "ZAI_API_KEY=*** > ${configDir}/.env\x1b[0m`);
   console.log(`\x1b[2m  airu chat\x1b[0m`);
 }
 
-// 명령어: model list
 function runModelList(): void {
   const glm = new GLMProvider();
   const ollama = new OllamaProvider();
@@ -319,7 +500,6 @@ function runModelList(): void {
   console.log();
 }
 
-// 명령어: status
 function runStatus(): void {
   const config = loadConfig();
   const configPath = getConfigPath();
@@ -334,10 +514,9 @@ function runStatus(): void {
 
   if (!process.env.ZAI_API_KEY) {
     console.log(`\n  \x1b[33mAPI 키가 설정되지 않았습니다.\x1b[0m`);
-    console.log(`  \x1b[2mecho "ZAI_API_KEY=your-key" > ~/.airu/.env\x1b[0m`);
+    console.log(`  \x1b[2mecho "ZAI_API_KEY=*** > ~/.airu/.env\x1b[0m`);
   }
 
-  // 툴 목록도 표시
   const tools = toolRegistry.all();
   if (tools.length > 0) {
     console.log(`  등록된 툴: ${tools.map(t => t.name).join(', ')}`);
@@ -346,7 +525,6 @@ function runStatus(): void {
   console.log();
 }
 
-// 온보딩: 인자 없이 실행 시
 function runOnboarding(): void {
   console.log(WELCOME_TEXT);
   console.log();
@@ -361,7 +539,7 @@ function runOnboarding(): void {
     console.log();
   } else if (!hasApiKey) {
     console.log('\x1b[33mAPI 키가 설정되지 않았습니다.\x1b[0m');
-    console.log('  \x1b[2mecho "ZAI_API_KEY=your-key" > ~/.airu/.env\x1b[0m');
+    console.log('  \x1b[2mecho "ZAI_API_KEY=*** > ~/.airu/.env\x1b[0m');
     console.log('  \x1b[33mairu chat\x1b[0m');
     console.log();
   } else {
@@ -376,7 +554,7 @@ function runOnboarding(): void {
   console.log();
 }
 
-// 메인
+// --- 메인 ---
 const program = new Command();
 program
   .name('airu')
@@ -408,14 +586,13 @@ program
   .description('현재 설정 상태 표시')
   .action(runStatus);
 
-// 툴 등록 (시작 시)
+// 툴 등록
 registerTools();
 
-// 파이프 모드 감지: chat 명령이고 stdin이 파이프일 때만
+// 파이프 모드 감지
 if (!process.stdin.isTTY && process.argv.includes('chat')) {
   await runPipeMode();
 } else {
-  // 인자 없이 실행 시 온보딩, 아니면 Commander 처리
   const hasCommand = process.argv.length > 2;
   if (!hasCommand) {
     runOnboarding();
@@ -424,6 +601,7 @@ if (!process.stdin.isTTY && process.argv.includes('chat')) {
   }
 }
 
+// --- 파이프 모드 ---
 async function runPipeMode(): Promise<void> {
   const chunks: string[] = [];
   for await (const chunk of process.stdin) {
@@ -462,6 +640,7 @@ async function runPipeMode(): Promise<void> {
       continue;
     }
 
+    // 파이프 모드에서는 툴 없이 단순 응답만
     let fullResponse = '';
     await provider.chat([{ role: 'user', content: trimmed }], {
       model: config.model,

@@ -1,7 +1,15 @@
 /**
  * GLM Provider - ZAI GLM API
+ * Tool calling (function calling) 지원
  */
-import type { IModelProvider, ProviderConfig, ChatMessage, StreamChunk } from '../core/provider';
+import type {
+  IModelProvider,
+  ProviderConfig,
+  ChatMessage,
+  StreamChunk,
+  ToolCall,
+  ToolSchema,
+} from '../core/provider';
 import { parseSSEStream, openaiSSEParser } from '../core/sse';
 import { loadConfig } from '../core/config';
 
@@ -18,16 +26,14 @@ export class GLMProvider implements IModelProvider {
 
   async initialize(config: ProviderConfig): Promise<void> {
     this.apiKey = config.apiKey || '';
-    this.baseUrl = config.baseUrl || this.baseUrl;
 
     if (!this.apiKey) {
       const yamlConfig = loadConfig();
       this.apiKey = yamlConfig.glmApiKey || process.env.ZAI_API_KEY || '';
     }
 
-    if (config.model) {
-      this.defaultModel = config.model;
-    }
+    if (config.baseUrl) this.baseUrl = config.baseUrl;
+    if (config.model) this.defaultModel = config.model;
   }
 
   async isAvailable(): Promise<boolean> {
@@ -40,10 +46,11 @@ export class GLMProvider implements IModelProvider {
       model?: string;
       signal?: AbortSignal;
       onChunk: (chunk: StreamChunk) => void;
+      tools?: ToolSchema[];
     }
   ): Promise<void> {
     const model = options.model || this.defaultModel;
-    const { signal, onChunk } = options;
+    const { signal, onChunk, tools } = options;
 
     const controller = new AbortController();
     if (signal) {
@@ -51,19 +58,26 @@ export class GLMProvider implements IModelProvider {
     }
 
     try {
+      const body: Record<string, unknown> = {
+        model,
+        messages,
+        stream: true,
+        max_tokens: 8192,
+        temperature: 0.7,
+      };
+
+      // 툴 전송
+      if (tools && tools.length > 0) {
+        body.tools = tools;
+      }
+
       const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.apiKey}`,
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          stream: true,
-          max_tokens: 8192,
-          temperature: 0.7,
-        }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
 
