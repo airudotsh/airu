@@ -211,45 +211,78 @@ program
   .action(runChat);
 
 // 파이프 모드
-function runPipeMode(): void {
+async function runPipeMode(): Promise<void> {
   const chunks: string[] = [];
   
-  process.stdin.on('data', (chunk) => {
+  // stdin에서 데이터 수집
+  for await (const chunk of process.stdin) {
     chunks.push(chunk.toString());
-  });
+  }
   
-  process.stdin.on('end', async () => {
-    const prompt = chunks.join('').trim();
-    if (prompt) {
-      // 단일 쿼리 모드
-      console.log(`\x1b[36m[airu pipe mode]\x1b[0m\n`);
-      const rl = readline.createInterface({ input: process.stdin });
-      // 파이프 모드는 현재 쿼리만 전송
-      const config = ensureDefaultConfig();
-      const provider = new GLMProvider();
-      await provider.initialize({});
-      
-      let fullResponse = '';
-      await provider.chat([{ role: 'user', content: prompt }], {
-        model: config.model,
-        onChunk: (chunk: StreamChunk) => {
-          if (chunk.type === 'content') {
-            if (chunk.content) process.stdout.write(chunk.content);
-            fullResponse += chunk.content ?? '';
-          }
-          if (chunk.type === 'error') {
-            console.log(`\n\x1b[31m[오류] ${chunk.error}\x1b[0m`);
-          }
-        },
-      });
-      console.log();
+  const input = chunks.join('');
+  const lines = input.split('\n').filter(l => l.trim());
+  
+  if (lines.length === 0) return;
+  
+  console.log(`\x1b[36m[airu pipe mode]\x1b[0m\n`);
+  
+  const config = ensureDefaultConfig();
+  const provider = new GLMProvider();
+  await provider.initialize({});
+  
+  // 라인별 처리
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    
+    if (trimmed.startsWith('/')) {
+      // 명령어 처리
+      if (trimmed === '/help') {
+        console.log(`
+\x1b[1m사용 가능한 명령어:\x1b[0m
+  /model <name>  - 모델 전환
+  /provider <name> - 프로바이더 전환 (glm, ollama)
+  /clear         - 대화 히스토리 초기화
+  /models        - 사용 가능한 모델 목록
+  /help          - 이 도움말 표시
+  /exit          - 종료 (파이프 모드에서는 첫 /exit에서 종료)
+`);
+        continue;
+      }
+      if (trimmed === '/exit' || trimmed === '/quit') {
+        console.log('\x1b[33m[파이프 모드 종료]\x1b[0m');
+        break;
+      }
+      if (trimmed === '/models') {
+        console.log(`\x1b[1m사용 가능한 모델:\x1b[0m ${provider.supportedModels.join(', ')}`);
+        continue;
+      }
+      // 알 수 없는 명령어는 무시
+      console.log(`\x1b[33m[명령어 무시: ${trimmed}]\x1b[0m`);
+      continue;
     }
-  });
+    
+    // 채팅 메시지
+    let fullResponse = '';
+    await provider.chat([{ role: 'user', content: trimmed }], {
+      model: config.model,
+      onChunk: (chunk: StreamChunk) => {
+        if (chunk.type === 'content') {
+          if (chunk.content) process.stdout.write(chunk.content);
+          fullResponse += chunk.content ?? '';
+        }
+        if (chunk.type === 'error') {
+          console.log(`\n\x1b[31m[오류] ${chunk.error}\x1b[0m`);
+        }
+      },
+    });
+    console.log();
+  }
 }
 
 // pipe 모드 감지
 if (!process.stdin.isTTY) {
-  runPipeMode();
+  await runPipeMode();
 } else {
   program.parse();
 }
