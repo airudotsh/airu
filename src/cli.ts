@@ -193,11 +193,11 @@ async function runChat(options: ChatOptions): Promise<void> {
     }
 
     if (trimmed === '/methods') {
-      const methods = methodRegistry.list();
+      const methods = methodRegistry.listEnabled();
       if (methods.length === 0) {
-        console.log('\x1b[2m등록된 메서드가 없습니다\x1b[0m');
+        console.log('\x1b[2m활성화된 메서드가 없습니다\x1b[0m');
       } else {
-        console.log(`\n\x1b[1m11개 메서드 (Sprint 3 스켈레톤):\x1b[0m`);
+        console.log(`\n\x1b[1m활성화된 메서드 (${methods.length}개):\x1b[0m`);
         for (const m of methods) {
           const status = m.category === 'common' ? '\x1b[32m[C]\x1b[0m' : '\x1b[36m[P]\x1b[0m';
           console.log(`  ${status} \x1b[33m${m.id} ${m.name}\x1b[0m  ${m.description.slice(0, 60)}`);
@@ -357,7 +357,8 @@ function runStatus(): void {
 
   const methods = methodRegistry.list();
   if (methods.length > 0) {
-    console.log(`  등록된 메서드: ${methods.length}개 (스켈레톤, Sprint 4+에서 구현)`);
+    const enabled = methodRegistry.listEnabled().length;
+    console.log(`  등록된 메서드: ${methods.length}개, 활성화: ${enabled}개 (스켈레톤, Sprint 4+에서 구현)`);
     const common = methods.filter(m => m.category === 'common').length;
     const project = methods.filter(m => m.category === 'project').length;
     console.log(`    common: ${common}개, project: ${project}개`);
@@ -479,7 +480,7 @@ async function runPipeMode(): Promise<void> {
         continue;
       }
       if (trimmed === '/methods') {
-        const methods = methodRegistry.list();
+        const methods = methodRegistry.listEnabled();
         for (const m of methods) {
           const status = m.category === 'common' ? '[C]' : '[P]';
           console.log(`  ${status} ${m.id} ${m.name}  ${m.description.slice(0, 60)}`);

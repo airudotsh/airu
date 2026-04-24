@@ -57,6 +57,9 @@ export interface IMethod {
   readonly description: string;
   readonly category: 'common' | 'project';
 
+  /** 기본 활성화 여부 (없으면 true) */
+  readonly defaultEnabled?: boolean;
+
   /** 메서드 실행 */
   execute(input: MethodInput, context: MethodContext): Promise<MethodOutput>;
 

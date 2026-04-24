@@ -10,6 +10,12 @@ export class MethodRegistry {
     if (this.methods.has(method.name)) {
       throw new Error(`Method '${method.name}' already registered`);
     }
+    // id 중복 검사
+    for (const existing of this.methods.values()) {
+      if (existing.id === method.id) {
+        throw new Error(`Method id '${method.id}' already registered as '${existing.name}'`);
+      }
+    }
     this.methods.set(method.name, method);
   }
 
@@ -30,20 +36,21 @@ export class MethodRegistry {
   listEnabled(config: Record<string, { enabled?: boolean }> = {}): IMethod[] {
     return this.list().filter((m) => {
       const methodConfig = config[m.name];
-      // default: common=활성, project=비활성
-      if (!methodConfig) {
-        return m.category === 'common';
+      if (methodConfig && 'enabled' in methodConfig) {
+        return methodConfig.enabled !== false;
       }
-      return methodConfig.enabled !== false;
+      // defaultEnabled가 false면 비활성, 없으면 true (common 기본)
+      return m.defaultEnabled !== false;
     });
   }
 
-  /** 메ASIL 인터페이스로 변환 */
+  /** 메서드 정보를 plain object로 변환 */
   toInterface(): Record<string, {
     id: string;
     name: string;
     description: string;
     category: string;
+    defaultEnabled: boolean;
     requiredTools: string[];
     configSchema: MethodConfigSchema;
   }> {
@@ -54,11 +61,13 @@ export class MethodRegistry {
         name: m.name,
         description: m.description,
         category: m.category,
+        defaultEnabled: m.defaultEnabled !== false,
         requiredTools: m.requiredTools(),
         configSchema: m.configSchema(),
       };
     }
-    return result as ReturnType<typeof this.toInterface>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return result as any;
   }
 }
 

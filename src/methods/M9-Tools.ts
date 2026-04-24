@@ -9,6 +9,7 @@ export class ToolsMethod implements IMethod {
   readonly name = 'tools';
   readonly description = '터미널, 파일, API 등 외부 도구를 활용하여 작업 수행.';
   readonly category: 'common' | 'project' = 'common';
+  readonly defaultEnabled = false;
 
   async execute(input: MethodInput, context: MethodContext): Promise<MethodOutput> {
     // Sprint 4+에서 구현
