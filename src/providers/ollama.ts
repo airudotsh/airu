@@ -2,6 +2,7 @@
  * Ollama Provider - 로컬 Ollama API
  */
 import type { IModelProvider, ProviderConfig, ChatMessage, StreamChunk } from '../core/provider';
+import { parseSSEStream, ollamaSSEParser } from '../core/sse';
 import { loadConfig } from '../core/config';
 
 export class OllamaProvider implements IModelProvider {
@@ -13,12 +14,12 @@ export class OllamaProvider implements IModelProvider {
 
   async initialize(config: ProviderConfig): Promise<void> {
     this.baseUrl = config.baseUrl || this.baseUrl;
-    
+
     if (!config.baseUrl) {
       const yamlConfig = loadConfig();
       this.baseUrl = yamlConfig.ollamaUrl || this.baseUrl;
     }
-    
+
     await this.refreshModels();
   }
 
@@ -86,38 +87,10 @@ export class OllamaProvider implements IModelProvider {
         return;
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-
-          try {
-            const parsed = JSON.parse(trimmed);
-            if (parsed.message?.content) {
-              onChunk({ type: 'content', content: parsed.message.content });
-            }
-            if (parsed.done) {
-              onChunk({ type: 'done' });
-              return;
-            }
-          } catch {
-            // Skip invalid JSON
-          }
-        }
-      }
-
-      onChunk({ type: 'done' });
+      await parseSSEStream(response.body.getReader(), {
+        onParsed: ollamaSSEParser,
+        doneSignal: '__ollama_done__',
+      }, onChunk);
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
         onChunk({ type: 'error', error: 'Request aborted' });

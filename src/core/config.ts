@@ -84,6 +84,10 @@ function parseYaml(content: string): Record<string, unknown> {
           (value.startsWith("'") && value.endsWith("'"))) {
         value = value.slice(1, -1);
       }
+      // ${ENV_VAR} 치환
+      value = value.replace(/\$\{([^}]+)\}/g, (_, envKey) => {
+        return process.env[envKey] || '';
+      });
       result[key] = value;
     }
   }

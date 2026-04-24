@@ -2,6 +2,7 @@
  * GLM Provider - ZAI GLM API
  */
 import type { IModelProvider, ProviderConfig, ChatMessage, StreamChunk } from '../core/provider';
+import { parseSSEStream, openaiSSEParser } from '../core/sse';
 import { loadConfig } from '../core/config';
 
 export class GLMProvider implements IModelProvider {
@@ -18,12 +19,12 @@ export class GLMProvider implements IModelProvider {
   async initialize(config: ProviderConfig): Promise<void> {
     this.apiKey = config.apiKey || '';
     this.baseUrl = config.baseUrl || this.baseUrl;
-    
+
     if (!this.apiKey) {
       const yamlConfig = loadConfig();
       this.apiKey = yamlConfig.glmApiKey || process.env.ZAI_API_KEY || '';
     }
-    
+
     if (config.model) {
       this.defaultModel = config.model;
     }
@@ -77,45 +78,9 @@ export class GLMProvider implements IModelProvider {
         return;
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith('data:')) continue;
-
-          const data = trimmed.slice(5).trim();
-          if (data === '[DONE]') {
-            onChunk({ type: 'done' });
-            return;
-          }
-
-          try {
-            const parsed = JSON.parse(data);
-            const delta = parsed.choices?.[0]?.delta || {};
-            
-            if (delta.thinking) {
-              onChunk({ type: 'thinking', thinking: delta.thinking });
-            }
-            if (delta.content) {
-              onChunk({ type: 'content', content: delta.content });
-            }
-          } catch {
-            // Skip invalid JSON
-          }
-        }
-      }
-
-      onChunk({ type: 'done' });
+      await parseSSEStream(response.body.getReader(), {
+        onParsed: openaiSSEParser,
+      }, onChunk);
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
         onChunk({ type: 'error', error: 'Request aborted' });
