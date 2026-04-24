@@ -12,6 +12,7 @@ import { GLMProvider } from './providers/glm';
 import { OllamaProvider } from './providers/ollama';
 import { registry } from './core/registry';
 import { toolRegistry } from './core/tools/registry';
+import { methodRegistry } from './core/method-registry';
 import { runAgentLoop } from './core/agent';
 import type {
   IModelProvider,
@@ -24,7 +25,9 @@ import { loadConfig, saveConfig, ensureDefaultConfig, getConfigPath } from './co
 import { TerminalTool } from './tools/terminal';
 import { FileReadTool, FileWriteTool, FileSearchTool } from './tools/file';
 import { WebSearchTool, WebFetchTool } from './tools/web';
+import { registerAllMethods } from './methods';
 
+// 툴 + 메서드 등록
 function registerTools(): void {
   toolRegistry.register(new TerminalTool());
   toolRegistry.register(new FileReadTool());
@@ -34,6 +37,9 @@ function registerTools(): void {
   toolRegistry.register(new WebFetchTool());
 }
 
+// 메서드 등록 (Sprint 3)
+registerAllMethods();
+
 const HELP_TEXT = `
 \x1b[1m사용 가능한 명령어:\x1b[0m
   /model <name>    - 모델 전환
@@ -41,6 +47,7 @@ const HELP_TEXT = `
   /clear           - 대화 히스토리 초기화
   /models          - 사용 가능한 모델 목록
   /tools           - 등록된 툴 목록
+  /methods         - 활성화된 메서드 목록
   /help            - 이 도움말 표시
   /exit            - 종료`;
 
@@ -180,6 +187,23 @@ async function runChat(options: ChatOptions): Promise<void> {
         for (const tool of tools) {
           console.log(`  \x1b[33m${tool.name}\x1b[0m  ${tool.description}`);
         }
+        console.log();
+      }
+      return true;
+    }
+
+    if (trimmed === '/methods') {
+      const methods = methodRegistry.list();
+      if (methods.length === 0) {
+        console.log('\x1b[2m등록된 메서드가 없습니다\x1b[0m');
+      } else {
+        console.log(`\n\x1b[1m11개 메서드 (Sprint 3 스켈레톤):\x1b[0m`);
+        for (const m of methods) {
+          const status = m.category === 'common' ? '\x1b[32m[C]\x1b[0m' : '\x1b[36m[P]\x1b[0m';
+          console.log(`  ${status} \x1b[33m${m.id} ${m.name}\x1b[0m  ${m.description.slice(0, 60)}`);
+        }
+        console.log();
+        console.log('  \x1b[32m[C]\x1b[0m=common  \x1b[36m[P]\x1b[0m=project  (현재 모두 미구현, Sprint 4+에서 구현)');
         console.log();
       }
       return true;
@@ -331,6 +355,14 @@ function runStatus(): void {
     console.log(`  등록된 툴: ${tools.map(t => t.name).join(', ')}`);
   }
 
+  const methods = methodRegistry.list();
+  if (methods.length > 0) {
+    console.log(`  등록된 메서드: ${methods.length}개 (스켈레톤, Sprint 4+에서 구현)`);
+    const common = methods.filter(m => m.category === 'common').length;
+    const project = methods.filter(m => m.category === 'project').length;
+    console.log(`    common: ${common}개, project: ${project}개`);
+  }
+
   console.log();
 }
 
@@ -443,6 +475,14 @@ async function runPipeMode(): Promise<void> {
           for (const tool of tools) {
             console.log(`  ${tool.name}  ${tool.description}`);
           }
+        }
+        continue;
+      }
+      if (trimmed === '/methods') {
+        const methods = methodRegistry.list();
+        for (const m of methods) {
+          const status = m.category === 'common' ? '[C]' : '[P]';
+          console.log(`  ${status} ${m.id} ${m.name}  ${m.description.slice(0, 60)}`);
         }
         continue;
       }
