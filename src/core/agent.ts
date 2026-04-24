@@ -1,6 +1,6 @@
 /**
  * Agent - 툴 에이전트 런타임
- * cli.ts에서 분리: 에이전트 루프 + 컨텍스트 압축
+ * cli.ts에서 분리: 에이전트 루프 + 컨텍스트 압축 + 가드레일
  */
 import type {
   IModelProvider,
@@ -9,6 +9,8 @@ import type {
   ToolSchema,
 } from './provider';
 import { toolRegistry } from './tools/registry';
+import { Guardrails, classifyError, recommendedAction } from './guardrails';
+import type { ExecutionMetrics } from './guardrails';
 
 export interface ToolCallResult {
   id: string;
@@ -19,6 +21,13 @@ export interface ToolCallResult {
 export interface AgentOptions {
   maxToolLoops?: number;
   maxTokensEstimate?: number;
+  /** 가드레일 옵션 (Sprint 4) */
+  guardrails?: {
+    maxIterations?: number;
+    warnAtIteration?: number;
+    abortAtIteration?: number;
+    maxTimeMs?: number;
+  };
 }
 
 /** 기본값 */
@@ -187,16 +196,17 @@ export async function executeToolCall(
 
 /**
  * 전체 툴 에이전트 루프: 메시지 전송 → 툴 감지 → 실행 → 재호출
- * @returns 최종 assistant 응답 content
+ * Sprint 4: Guardrails 통합 (시간/반복 한도, 에러 분류, 자동 재시도)
+ * @returns 최종 assistant 응답 content + 메트릭
  */
 export async function runAgentLoop(
   provider: IModelProvider,
   model: string,
   messages: ChatMessage[],
   options: AgentOptions & { signal?: AbortSignal } = {},
-): Promise<{ content: string; hadError?: boolean }> {
-  const maxLoops = options.maxToolLoops ?? DEFAULT_MAX_TOOL_LOOPS;
+): Promise<{ content: string; hadError?: boolean; metrics?: ExecutionMetrics }> {
   const maxTokens = options.maxTokensEstimate ?? DEFAULT_MAX_TOKENS;
+  const guardrails = new Guardrails(options.guardrails ?? {});
 
   // 컨텍스트 압축 체크
   if (estimateTokens(messages) > maxTokens) {
@@ -208,14 +218,40 @@ export async function runAgentLoop(
 
   let assistantContent = '';
 
-  for (let loop = 0; loop < maxLoops; loop++) {
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    // Guardrails 반복 체크
+    const { continue: shouldContinue, reason } = await guardrails.next();
+
+    if (reason) {
+      if (reason.includes('초과')) {
+        process.stdout.write(`\r\x1b[31m${reason}\x1b[0m\n`);
+        return { content: '', hadError: true, metrics: guardrails.logger.getMetrics() };
+      } else {
+        process.stdout.write(`\r\x1b[33m${reason}\x1b[0m `);
+      }
+    }
+
+    if (!shouldContinue) {
+      process.stdout.write(`\r\x1b[31m${reason || '가드레일 중단'}\x1b[0m\n`);
+      return { content: '', hadError: true, metrics: guardrails.logger.getMetrics() };
+    }
+
     const { content, toolCalls, error } = await agentChat(provider, model, messages, {
       signal: options.signal,
     });
 
-    // provider error
+    // provider/network error → Guardrails 에러 분류 + 자동 재시도
     if (error) {
-      return { content: '', hadError: true };
+      const { shouldRetry, delayMs, message } = await guardrails.handleError(error);
+      if (shouldRetry) {
+        process.stdout.write(`\r\x1b[33m${message}\x1b[0m `);
+        if (delayMs > 0) await sleep(delayMs);
+        continue;
+      } else {
+        process.stdout.write(`\r\x1b[31m${message}\x1b[0m\n`);
+        return { content: '', hadError: true, metrics: guardrails.logger.getMetrics() };
+      }
     }
 
     // 빈 응답 → 종료
@@ -257,6 +293,21 @@ export async function runAgentLoop(
       console.log(`\x1b[33m[툴 실행 중: ${tc.name}]\x1b[0m`);
 
       const result = await executeToolCall(tc.name, args);
+
+      // 툴 실행 실패 → Guardrails 에러 분류
+      if (!result.success && result.error) {
+        const { shouldRetry, delayMs, message } = await guardrails.handleError(result.error);
+        if (shouldRetry) {
+          process.stdout.write(`\r\x1b[33m${message}\x1b[0m `);
+          if (delayMs > 0) await sleep(delayMs);
+          // 재시도: 같은 툴 한 번 더
+          const retryResult = await executeToolCall(tc.name, args);
+          if (!retryResult.success) {
+            guardrails.logger.log({ type: 'error_classified', error: retryResult.error || '', category: 'tool', action: 'fallback' });
+          }
+        }
+      }
+
       messages.push({
         role: 'tool',
         content: result.success ? result.output : `Error: ${result.error || 'unknown'}`,
@@ -272,5 +323,9 @@ export async function runAgentLoop(
     messages.push({ role: 'assistant', content: assistantContent });
   }
 
-  return { content: assistantContent };
+  return { content: assistantContent, metrics: guardrails.logger.getMetrics() };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
