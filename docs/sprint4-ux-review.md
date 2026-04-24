@@ -69,6 +69,24 @@
 
 ---
 
+## 추가 리뷰 (system prompt + 파이프 모드 수정 후)
+
+### Codex (gpt-5.4) — FAIL → 수정 후 PASS
+
+**2건 regression 발견**:
+1. `/clear` 시 `toolSystemBase` 사라짐 → `effectiveSystemPrompt` 변수로 통일
+2. 파이프 모드에서 `config.systemPrompt` 미포함 → `pipeSystemPrompt`로 통합
+
+**수정 커밋**: e422e87
+
+### Qwen3.6 35B-A3B — PASS
+"Bounded retries, intelligent error routing, explicit state restoration. Prevents runaway loops while maintaining guardrail integrity."
+
+### Gemma4 26B — PASS
+"while(true) bounded by iteration/time limits is a controlled retry mechanism, not a potential system hang."
+
+---
+
 ## Sprint 4 결론
 
 **Codex 리뷰 + 수정**: FAIL → PASS (5버그 수정)
