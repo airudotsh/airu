@@ -83,6 +83,11 @@ export class OllamaProvider implements IModelProvider {
         stream: true,
       };
 
+      // Qwen3.6 + Gemma4: thinking 비활성화 (content에 직접 출력)
+      if (model.includes('qwen3') || model.includes('gemma4')) {
+        (body as Record<string, unknown>).think = false;
+      }
+
       // Ollama tool calling: tools를 tools 파라미터로 전송
       if (tools && tools.length > 0) {
         body.tools = tools;
