@@ -123,12 +123,12 @@ async function runChat(options: ChatOptions): Promise<void> {
     '직접 방법을 알려주지 말고 툴로 직접 실행하세요.',
   ].join('\n');
 
+  const effectiveSystemPrompt = systemPrompt
+    ? `${toolSystemBase}\n\n${systemPrompt}`
+    : toolSystemBase;
+
   const messages: ChatMessage[] = [];
-  if (systemPrompt) {
-    messages.push({ role: 'system', content: `${toolSystemBase}\n\n${systemPrompt}` });
-  } else {
-    messages.push({ role: 'system', content: toolSystemBase });
-  }
+  messages.push({ role: 'system', content: effectiveSystemPrompt });
 
   let currentModel = model;
   let currentProvider = providerName;
@@ -175,7 +175,7 @@ async function runChat(options: ChatOptions): Promise<void> {
 
     if (trimmed === '/clear') {
       messages.length = 0;
-      if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+      messages.push({ role: 'system', content: effectiveSystemPrompt });
       console.log('\x1b[36m[대화가 초기화되었습니다]\x1b[0m');
       return true;
     }
@@ -510,7 +510,10 @@ async function runPipeMode(): Promise<void> {
       '파일, 터미널, 웹 검색 등의 작업이 필요하면 반드시 툴을 사용하세요.',
       '직접 방법을 알려주지 말고 툴로 직접 실행하세요.',
     ].join('\n');
-    messages.push({ role: 'system', content: toolSystemBase });
+    const pipeSystemPrompt = config.systemPrompt
+      ? `${toolSystemBase}\n\n${config.systemPrompt}`
+      : toolSystemBase;
+    messages.push({ role: 'system', content: pipeSystemPrompt });
     messages.push({ role: 'user', content: trimmed });
 
     await runAgentLoop(provider, config.model || 'glm-5.1', messages);
