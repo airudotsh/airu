@@ -10,8 +10,24 @@ import * as os from 'os';
 import { GLMProvider } from './providers/glm';
 import { OllamaProvider } from './providers/ollama';
 import { registry } from './core/registry';
+import { toolRegistry } from './core/tools/registry';
 import type { IModelProvider, ChatMessage, StreamChunk } from './core/provider';
+import type { ITool } from './core/tools/tool';
 import { loadConfig, saveConfig, ensureDefaultConfig, getConfigPath } from './core/config';
+
+// 툴 등록
+import { TerminalTool } from './tools/terminal';
+import { FileReadTool, FileWriteTool, FileSearchTool } from './tools/file';
+import { WebSearchTool, WebFetchTool } from './tools/web';
+
+function registerTools(): void {
+  toolRegistry.register(new TerminalTool());
+  toolRegistry.register(new FileReadTool());
+  toolRegistry.register(new FileWriteTool());
+  toolRegistry.register(new FileSearchTool());
+  toolRegistry.register(new WebSearchTool());
+  toolRegistry.register(new WebFetchTool());
+}
 
 const HELP_TEXT = `
 \x1b[1m사용 가능한 명령어:\x1b[0m
@@ -23,6 +39,16 @@ const HELP_TEXT = `
   /help            - 이 도움말 표시
   /exit            - 종료`;
 
+const WELCOME_TEXT = `
+\x1b[1m\x1b[36m  _                        _
+ / \\   _ __   _____      _| |
+/ _ \\ | '_ \\ / _ \\ \\ /\\ / / |
+/ ___ \\| | | | (_) \\ V  V /| |
+/_/   \\_\\_| |_|\\___/ \\_/\\_/ |_|
+\x1b[0m
+
+\x1b[2mAI 채팅 CLI — 시작하려면 메시지를 입력하세요\x1b[0m`;
+
 let shouldExit = false;
 
 interface ChatOptions {
@@ -31,31 +57,48 @@ interface ChatOptions {
   system?: string;
 }
 
-/** Provider 인스턴스 생성 */
-function createProvider(name: string, config: ReturnType<typeof ensureDefaultConfig>): IModelProvider {
+/** Provider 인스턴스 생성 + async 초기화 */
+async function createAndInitProvider(
+  name: string,
+  config: ReturnType<typeof ensureDefaultConfig>
+): Promise<IModelProvider> {
+  let provider: IModelProvider;
   if (name === 'glm') {
-    const p = new GLMProvider();
-    p.initialize({ apiKey: config.glmApiKey, baseUrl: config.glmBaseUrl });
-    return p;
+    provider = new GLMProvider();
+    await provider.initialize({ apiKey: config.glmApiKey, baseUrl: config.glmBaseUrl });
+  } else if (name === 'ollama') {
+    provider = new OllamaProvider();
+    await provider.initialize({ baseUrl: config.ollamaUrl });
+  } else {
+    throw new Error(`알 수 없는 프로바이더: ${name} (사용 가능: glm, ollama)`);
   }
-  if (name === 'ollama') {
-    const p = new OllamaProvider();
-    p.initialize({ baseUrl: config.ollamaUrl });
-    return p;
+  return provider;
+}
+
+/** 인증 에러인지 확인 */
+function isAuthError(error: string): boolean {
+  return /401|403|token expired|incorrect|unauthorized/i.test(error);
+}
+
+/** 에러 메시지 포맷 */
+function formatError(error: string): string {
+  if (isAuthError(error)) {
+    return `API 키가 유효하지 않습니다.\n  ~/.airu/.env 파일에 ZAI_API_KEY를 설정하세요.`;
   }
-  throw new Error(`Unknown provider: ${name}`);
+  return error;
 }
 
 async function runChat(options: ChatOptions): Promise<void> {
   const config = ensureDefaultConfig();
   const providerName = options.provider || config.provider || 'glm';
-  const provider = createProvider(providerName, config);
-  // initialize is async but we called it in createProvider
-  await (provider as GLMProvider | OllamaProvider).initialize?.(
-    providerName === 'glm'
-      ? { apiKey: config.glmApiKey, baseUrl: config.glmBaseUrl }
-      : { baseUrl: config.ollamaUrl }
-  );
+
+  let activeProvider: IModelProvider;
+  try {
+    activeProvider = await createAndInitProvider(providerName, config);
+  } catch (e) {
+    console.log(`\x1b[31m[오류] ${(e as Error).message}\x1b[0m`);
+    return;
+  }
 
   const model = options.model || config.model || 'glm-5.1';
   const systemPrompt = options.system || config.systemPrompt;
@@ -68,9 +111,10 @@ async function runChat(options: ChatOptions): Promise<void> {
 
   let currentModel = model;
   let currentProvider = providerName;
-  let activeProvider = provider;
 
-  console.log(`\x1b[36m[airu]\x1b[0m ${currentProvider}/${currentModel} (도움말: /help)`);
+  // 웰컴 메시지
+  console.log(WELCOME_TEXT);
+  console.log(`\x1b[2m  ${currentProvider}/${currentModel}  |  /help\x1b[0m`);
   console.log();
 
   const rl = readline.createInterface({
@@ -125,6 +169,20 @@ async function runChat(options: ChatOptions): Promise<void> {
       return true;
     }
 
+    if (trimmed === '/tools') {
+      const tools = toolRegistry.all();
+      if (tools.length === 0) {
+        console.log('\x1b[2m등록된 툴이 없습니다\x1b[0m');
+      } else {
+        console.log(`\n\x1b[1m등록된 툴:\x1b[0m`);
+        for (const tool of tools) {
+          console.log(`  \x1b[33m${tool.name}\x1b[0m  ${tool.description}`);
+        }
+        console.log();
+      }
+      return true;
+    }
+
     if (trimmed.startsWith('/model ')) {
       currentModel = trimmed.slice(7).trim();
       console.log(`\x1b[36m[모델 전환: ${currentModel}]\x1b[0m`);
@@ -133,13 +191,17 @@ async function runChat(options: ChatOptions): Promise<void> {
 
     if (trimmed.startsWith('/provider ')) {
       const newName = trimmed.slice(10).trim();
-      try {
-        activeProvider = createProvider(newName, config);
-        currentProvider = newName;
-        console.log(`\x1b[36m[프로바이더 전환: ${currentProvider}]\x1b[0m`);
-      } catch (e) {
-        console.log(`\x1b[31m[알 수 없는 프로바이더: ${newName}]\x1b[0m`);
-      }
+      createAndInitProvider(newName, config)
+        .then((p) => {
+          activeProvider = p;
+          currentProvider = newName;
+          console.log(`\x1b[36m[프로바이더 전환: ${currentProvider}]\x1b[0m`);
+          rl.prompt();
+        })
+        .catch((e) => {
+          console.log(`\x1b[31m[${(e as Error).message}]\x1b[0m`);
+          rl.prompt();
+        });
       return true;
     }
 
@@ -167,7 +229,8 @@ async function runChat(options: ChatOptions): Promise<void> {
           case 'thinking':
             break;
           case 'error':
-            console.log(`\n\x1b[31m[오류] ${chunk.error}\x1b[0m`);
+            process.stdout.write('\r\x1b[K'); // 로딩 표시 지우기
+            console.log(`\x1b[31m[오류] ${formatError(chunk.error ?? 'unknown error')}\x1b[0m`);
             break;
           case 'done':
             console.log();
@@ -230,7 +293,9 @@ function runInit(): void {
   });
 
   console.log(`\x1b[36m[설정 파일이 생성되었습니다: ${configPath}]\x1b[0m`);
-  console.log(`\x1b[2mAPI 키를 설정하려면 ${configDir}/.env 파일을 생성하세요.\x1b[0m`);
+  console.log(`\x1b[2mAPI 키를 설정하세요:\x1b[0m`);
+  console.log(`\x1b[2m  echo "ZAI_API_KEY=your-key" > ${configDir}/.env\x1b[0m`);
+  console.log(`\x1b[2m  airu chat\x1b[0m`);
 }
 
 // 명령어: model list
@@ -266,6 +331,48 @@ function runStatus(): void {
   console.log(`  GLM 엔드포인트: ${config.glmBaseUrl || '(미설정)'}`);
   console.log(`  Ollama URL: ${config.ollamaUrl || '(미설정)'}`);
   console.log(`  API 키: ${process.env.ZAI_API_KEY ? '\x1b[32m설정됨\x1b[0m' : '\x1b[31m미설정\x1b[0m'}`);
+
+  if (!process.env.ZAI_API_KEY) {
+    console.log(`\n  \x1b[33mAPI 키가 설정되지 않았습니다.\x1b[0m`);
+    console.log(`  \x1b[2mecho "ZAI_API_KEY=your-key" > ~/.airu/.env\x1b[0m`);
+  }
+
+  // 툴 목록도 표시
+  const tools = toolRegistry.all();
+  if (tools.length > 0) {
+    console.log(`  등록된 툴: ${tools.map(t => t.name).join(', ')}`);
+  }
+
+  console.log();
+}
+
+// 온보딩: 인자 없이 실행 시
+function runOnboarding(): void {
+  console.log(WELCOME_TEXT);
+  console.log();
+
+  const hasConfig = fs.existsSync(getConfigPath());
+  const hasApiKey = !!process.env.ZAI_API_KEY;
+
+  if (!hasConfig) {
+    console.log('\x1b[1m시작하기:\x1b[0m');
+    console.log('  \x1b[33mairu init\x1b[0m      — 설정 파일 생성');
+    console.log('  \x1b[33mairu chat\x1b[0m     — 채팅 시작');
+    console.log();
+  } else if (!hasApiKey) {
+    console.log('\x1b[33mAPI 키가 설정되지 않았습니다.\x1b[0m');
+    console.log('  \x1b[2mecho "ZAI_API_KEY=your-key" > ~/.airu/.env\x1b[0m');
+    console.log('  \x1b[33mairu chat\x1b[0m');
+    console.log();
+  } else {
+    console.log('\x1b[1m명령어:\x1b[0m');
+    console.log('  \x1b[33mairu chat\x1b[0m     — 채팅 시작');
+    console.log('  \x1b[33mairu status\x1b[0m   — 현재 설정 확인');
+    console.log('  \x1b[33mairu model list\x1b[0m — 사용 가능한 모델');
+    console.log();
+  }
+
+  console.log('\x1b[2m자세한 도움말: airu --help\x1b[0m');
   console.log();
 }
 
@@ -301,11 +408,20 @@ program
   .description('현재 설정 상태 표시')
   .action(runStatus);
 
+// 툴 등록 (시작 시)
+registerTools();
+
 // 파이프 모드 감지: chat 명령이고 stdin이 파이프일 때만
 if (!process.stdin.isTTY && process.argv.includes('chat')) {
   await runPipeMode();
 } else {
-  program.parse();
+  // 인자 없이 실행 시 온보딩, 아니면 Commander 처리
+  const hasCommand = process.argv.length > 2;
+  if (!hasCommand) {
+    runOnboarding();
+  } else {
+    program.parse();
+  }
 }
 
 async function runPipeMode(): Promise<void> {
@@ -318,15 +434,8 @@ async function runPipeMode(): Promise<void> {
   const lines = input.split('\n').filter(l => l.trim());
   if (lines.length === 0) return;
 
-  console.log(`\x1b[36m[airu pipe mode]\x1b[0m\n`);
-
   const config = ensureDefaultConfig();
-  const provider = createProvider(config.provider || 'glm', config);
-  await (provider as GLMProvider | OllamaProvider).initialize?.(
-    (config.provider || 'glm') === 'glm'
-      ? { apiKey: config.glmApiKey, baseUrl: config.glmBaseUrl }
-      : { baseUrl: config.ollamaUrl }
-  );
+  const provider = await createAndInitProvider(config.provider || 'glm', config);
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -336,7 +445,18 @@ async function runPipeMode(): Promise<void> {
       if (trimmed === '/help') { console.log(HELP_TEXT); continue; }
       if (trimmed === '/exit' || trimmed === '/quit') { break; }
       if (trimmed === '/models') {
-        console.log(`\x1b[1m사용 가능한 모델:\x1b[0m ${provider.supportedModels.join(', ')}`);
+        console.log(`사용 가능한 모델: ${provider.supportedModels.join(', ')}`);
+        continue;
+      }
+      if (trimmed === '/tools') {
+        const tools = toolRegistry.all();
+        if (tools.length === 0) {
+          console.log('등록된 툴이 없습니다');
+        } else {
+          for (const tool of tools) {
+            console.log(`  ${tool.name}  ${tool.description}`);
+          }
+        }
         continue;
       }
       continue;
@@ -351,7 +471,7 @@ async function runPipeMode(): Promise<void> {
           fullResponse += chunk.content ?? '';
         }
         if (chunk.type === 'error') {
-          console.log(`\n\x1b[31m[오류] ${chunk.error}\x1b[0m`);
+          console.log(`\n[오류] ${formatError(chunk.error ?? 'unknown error')}`);
         }
       },
     });
