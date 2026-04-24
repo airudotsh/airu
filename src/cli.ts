@@ -114,9 +114,20 @@ async function runChat(options: ChatOptions): Promise<void> {
   const model = options.model || config.model || 'glm-5.1';
   const systemPrompt = options.system || config.systemPrompt;
 
+  // 툴 사용 안내 system prompt
+  const toolNames = toolRegistry.all().map((t) => t.name);
+  const toolSystemBase = [
+    '당신은 airu CLI 어시스턴트입니다.',
+    '사용 가능한 툴: ' + toolNames.join(', '),
+    '파일, 터미널, 웹 검색 등의 작업이 필요하면 반드시 툴을 사용하세요.',
+    '직접 방법을 알려주지 말고 툴로 직접 실행하세요.',
+  ].join('\n');
+
   const messages: ChatMessage[] = [];
   if (systemPrompt) {
-    messages.push({ role: 'system', content: systemPrompt });
+    messages.push({ role: 'system', content: `${toolSystemBase}\n\n${systemPrompt}` });
+  } else {
+    messages.push({ role: 'system', content: toolSystemBase });
   }
 
   let currentModel = model;
@@ -490,20 +501,19 @@ async function runPipeMode(): Promise<void> {
       continue;
     }
 
-    // 파이프 모드에서는 툴 없이 단순 응답만
-    let fullResponse = '';
-    await provider.chat([{ role: 'user', content: trimmed }], {
-      model: config.model,
-      onChunk: (chunk: StreamChunk) => {
-        if (chunk.type === 'content') {
-          if (chunk.content) process.stdout.write(chunk.content);
-          fullResponse += chunk.content ?? '';
-        }
-        if (chunk.type === 'error') {
-          console.log(`\n[오류] ${formatError(chunk.error ?? 'unknown error')}`);
-        }
-      },
-    });
+    // 파이프 모드에서도 툴 에이전트 루프 사용
+    const messages: ChatMessage[] = [];
+    const toolNames = toolRegistry.all().map((t) => t.name);
+    const toolSystemBase = [
+      '당신은 airu CLI 어시스턴트입니다.',
+      '사용 가능한 툴: ' + toolNames.join(', '),
+      '파일, 터미널, 웹 검색 등의 작업이 필요하면 반드시 툴을 사용하세요.',
+      '직접 방법을 알려주지 말고 툴로 직접 실행하세요.',
+    ].join('\n');
+    messages.push({ role: 'system', content: toolSystemBase });
+    messages.push({ role: 'user', content: trimmed });
+
+    await runAgentLoop(provider, config.model || 'glm-5.1', messages);
     console.log();
   }
 }
