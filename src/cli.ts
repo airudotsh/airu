@@ -15,6 +15,8 @@ import { toolRegistry } from './core/tools/registry';
 import { methodRegistry } from './core/method-registry';
 import { patternRegistry } from './core/pattern-registry';
 import { registerAllPatterns } from './patterns';
+import { Orchestrator } from './core/orchestrator';
+import { SessionStore } from './core/session-store';
 import { runAgentLoop } from './core/agent';
 import type {
   IModelProvider,
@@ -57,6 +59,8 @@ const HELP_TEXT = `
   /tools           - 등록된 툴 목록
   /methods         - 활성화된 메서드 목록
   /patterns        - 패턴 분류 결과 표시
+  /reflect         - 최근 회고 리포트 표시
+  /growth          - 성장 추적 현황 표시
   /help            - 이 도움말 표시
   /exit            - 종료`;
 
@@ -142,8 +146,17 @@ async function runChat(options: ChatOptions): Promise<void> {
   let currentModel = model;
   let currentProvider = providerName;
 
+  // Orchestrator + 세션 (Sprint 6)
+  const orchestrator = new Orchestrator({
+    patternRegistry,
+    methodRegistry,
+    options: { enableReflection: true, enableGrowth: true, directionWarnThreshold: 5 },
+  });
+  const sessionStore = new SessionStore();
+  const session = sessionStore.create();
+
   console.log(WELCOME_TEXT);
-  console.log(`\x1b[2m  ${currentProvider}/${currentModel}  |  /help\x1b[0m`);
+  console.log(`\x1b[2m  ${currentProvider}/${currentModel}  |  세션: ${session.id.slice(-8)}  |  /help\x1b[0m`);
   console.log();
 
   const rl = readline.createInterface({
@@ -239,6 +252,32 @@ async function runChat(options: ChatOptions): Promise<void> {
       return true;
     }
 
+    if (trimmed === '/reflect') {
+      const recent = orchestrator.getRecentReflection(5);
+      console.log(`\n\x1b[1m최근 회고:\x1b[0m`);
+      console.log(recent);
+      console.log();
+      return true;
+    }
+
+    if (trimmed === '/growth') {
+      const growth = orchestrator.getGrowthReport();
+      const suggestions = orchestrator.getGrowthSuggestions();
+      console.log(`\n\x1b[1m성장 추적 (${growth.length}개 패턴):\x1b[0m`);
+      for (const g of growth) {
+        const bar = '\x1b[33m' + '|'.repeat(Math.min(g.count, 20)) + '\x1b[0m';
+        console.log(`  ${g.patternId} ×${g.count}  avg:${(g.avgScore * 100).toFixed(0)}%  ${bar}`);
+      }
+      if (suggestions.length > 0) {
+        console.log('\n\x1b[1m성장 제안:\x1b[0m');
+        for (const s of suggestions) {
+          console.log(`  \x1b[36m*\x1b[0m ${s}`);
+        }
+      }
+      console.log();
+      return true;
+    }
+
     if (trimmed.startsWith('/model ')) {
       currentModel = trimmed.slice(7).trim();
       console.log(`\x1b[36m[모델 전환: ${currentModel}]\x1b[0m`);
@@ -264,14 +303,14 @@ async function runChat(options: ChatOptions): Promise<void> {
     return false;
   }
 
-  /** 사용자 메시지 전송 + 툴 에이전트 루프 */
+  /** 사용자 메시지 전송 — Orchestrator 경유 (Sprint 6) */
   async function sendMessage(content: string): Promise<void> {
     isGenerating = true;
 
-    // 패턴 분류 (Sprint 5)
-    const classification = patternRegistry.classify(content);
-    if (classification) {
-      process.stdout.write(`\x1b[2m[${classification.pattern.id} ${classification.pattern.name} ${(classification.score * 100).toFixed(0)}%]\x1b[0m `);
+    // 패턴 분류 먼저 (응답 전에 표시)
+    const preClassification = patternRegistry.classify(content);
+    if (preClassification) {
+      process.stdout.write(`\x1b[2m[${preClassification.pattern.id} ${preClassification.pattern.name} ${(preClassification.score * 100).toFixed(0)}%]\x1b[0m `);
     }
 
     messages.push({ role: 'user', content });
@@ -279,20 +318,29 @@ async function runChat(options: ChatOptions): Promise<void> {
     abortController = new AbortController();
     process.stdout.write('\x1b[35m...\x1b[0m ');
 
-    const { content: assistantContent, hadError } = await runAgentLoop(
+    const result = await orchestrator.execute(
       activeProvider,
       currentModel,
       messages,
+      content,
       { signal: abortController.signal },
     );
 
-    if (hadError || (!assistantContent && messages[messages.length - 1]?.role !== 'tool')) {
-      // provider/network error — last message in messages is already error or empty
-      // formatError applied inside runAgentLoop via agent.ts console output
+    // 세션 저장
+    sessionStore.appendMessage(session, { role: 'user', content });
+    if (result.content) {
+      sessionStore.appendMessage(session, { role: 'assistant', content: result.content });
+    }
+    if (result.reflection) {
+      sessionStore.appendReflection(session, result.reflection);
     }
 
-    if (!assistantContent && !hadError) {
-      // empty response, already printed by runAgentLoop
+    // 회고/성장 정보 출력
+    if (result.reflection && result.reflection.improvements.length > 0) {
+      process.stdout.write('\n');
+      for (const imp of result.reflection.improvements) {
+        console.log(`\x1b[2m  > ${imp}\x1b[0m`);
+      }
     }
 
     isGenerating = false;
@@ -527,28 +575,30 @@ async function runPipeMode(): Promise<void> {
       continue;
     }
 
-    // 파이프 모드에서도 툴 에이전트 루프 사용
-    // 패턴 분류 (Sprint 5)
-    const pipeClassification = patternRegistry.classify(trimmed);
-    if (pipeClassification) {
-      process.stdout.write(`\x1b[2m[${pipeClassification.pattern.id} ${pipeClassification.pattern.name} ${(pipeClassification.score * 100).toFixed(0)}%]\x1b[0m `);
+    // 파이프 모드 — Orchestrator 경유 (Sprint 6)
+    const pipeSessionStore = new SessionStore();
+    const pipeSession = pipeSessionStore.create('pipe');
+    const pipeOrchestrator = new Orchestrator({ methodRegistry, patternRegistry });
+
+    const pipeResult = await pipeOrchestrator.execute(
+      provider,
+      config.model || 'glm-5.1',
+      [],  // 빈 messages — execute 내부에서 시스템 프롬프트 구성
+      trimmed,
+      undefined,  // 옵션 없음
+    );
+
+    // 패턴 분류 표시
+    if (pipeResult.pattern) {
+      process.stdout.write(`\x1b[2m[${pipeResult.pattern.id} ${pipeResult.pattern.name} ${(pipeResult.pattern.score * 100).toFixed(0)}%]\x1b[0m `);
     }
 
-    const messages: ChatMessage[] = [];
-    const toolNames = toolRegistry.all().map((t) => t.name);
-    const toolSystemBase = [
-      '당신은 airu CLI 어시스턴트입니다.',
-      '사용 가능한 툴: ' + toolNames.join(', '),
-      '파일, 터미널, 웹 검색 등의 작업이 필요하면 반드시 툴을 사용하세요.',
-      '직접 방법을 알려주지 말고 툴로 직접 실행하세요.',
-    ].join('\n');
-    const pipeSystemPrompt = config.systemPrompt
-      ? `${toolSystemBase}\n\n${config.systemPrompt}`
-      : toolSystemBase;
-    messages.push({ role: 'system', content: pipeSystemPrompt });
-    messages.push({ role: 'user', content: trimmed });
+    // 세션 저장
+    pipeSessionStore.appendMessage(pipeSession, { role: 'user', content: trimmed });
+    if (pipeResult.content) {
+      pipeSessionStore.appendMessage(pipeSession, { role: 'assistant', content: pipeResult.content });
+    }
 
-    await runAgentLoop(provider, config.model || 'glm-5.1', messages);
     console.log();
   }
 }
