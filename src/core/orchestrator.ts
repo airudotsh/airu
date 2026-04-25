@@ -107,14 +107,17 @@ export class Orchestrator {
       process.stdout.write(`\x1b[33m[${directionWarning}]\x1b[0m `);
     }
 
-    // 3. 시스템 프롬프트 + user 메시지 보장
-    if (messages.length === 0 || messages[0].role !== 'system') {
+    // 3. messages 복사본 생성 (원본 불변)
+    const workingMessages: ChatMessage[] = messages.map((m) => ({ ...m }));
+
+    // 시스템 프롬프트 보장
+    if (workingMessages.length === 0 || workingMessages[0].role !== 'system') {
       const toolSystemBase = [
         '당신은 airu CLI 어시스턴트입니다.',
         '파일, 터미널, 웹 검색 등의 작업이 필요하면 반드시 툴을 사용하세요.',
         '직접 방법을 알려주지 말고 툴로 직접 실행하세요.',
       ].join('\n');
-      messages.unshift({ role: 'system', content: toolSystemBase });
+      workingMessages.unshift({ role: 'system', content: toolSystemBase });
     }
 
     // 패턴에 해당하는 메서드 정보를 system prompt에 추가
@@ -127,17 +130,20 @@ export class Orchestrator {
         .join('\n');
 
       if (methodDescs) {
-        messages[0].content += `\n\n[활성 메서드]\n${methodDescs}`;
+        workingMessages[0] = {
+          ...workingMessages[0],
+          content: workingMessages[0].content + `\n\n[활성 메서드]\n${methodDescs}`,
+        };
       }
     }
 
     // user 메시지가 없으면 추가
-    if (!messages.some((m) => m.role === 'user')) {
-      messages.push({ role: 'user', content: userInput });
+    if (!workingMessages.some((m) => m.role === 'user')) {
+      workingMessages.push({ role: 'user', content: userInput });
     }
 
     // 4. 툴 에이전트 루프 실행
-    const result = await runAgentLoop(provider, model, messages, {
+    const result = await runAgentLoop(provider, model, workingMessages, {
       signal: options?.signal,
       guardrails: {
         maxTimeMs: this.guardrailsOptions.maxTimeMs,
@@ -150,7 +156,7 @@ export class Orchestrator {
 
     // 5. 성장 추적
     if (this.enableGrowth && patternInfo) {
-      this.trackGrowth(patternInfo);
+      this.trackGrowth(patternInfo, result.metrics);
     }
 
     // 6. 회고
@@ -238,8 +244,8 @@ export class Orchestrator {
     };
   }
 
-  /** 성장 추적 — 반복 패턴 → 스킬 제안 */
-  private trackGrowth(pattern: { id: string; name: string; score: number }): void {
+  /** 성장 추적 — 반복 패턴 + 품질 기반 스킬 제안 */
+  private trackGrowth(pattern: { id: string; name: string; score: number }, metrics?: ExecutionMetrics): void {
     const existing = this.growthMap.get(pattern.id);
 
     if (existing) {
@@ -247,9 +253,15 @@ export class Orchestrator {
       existing.lastSeen = Date.now();
       existing.avgScore = (existing.avgScore * (existing.count - 1) + pattern.score) / existing.count;
 
-      // 3회 이상 반복 시 스킬 제안
-      if (existing.count >= 3 && !existing.suggestedSkill) {
-        existing.suggestedSkill = `반복 패턴 ${pattern.id}(${pattern.name}) 감지 — 전용 스킬 생성 권장`;
+      // 제안 조건: 반복 3회+ 또는 낮은 점수 반복 2회+ 또는 에러 다발
+      if (!existing.suggestedSkill) {
+        if (existing.count >= 3) {
+          existing.suggestedSkill = `반복 패턴 ${pattern.id}(${pattern.name}) ${existing.count}회 감지 — 전용 스킬/단축키 생성 권장`;
+        } else if (existing.count >= 2 && existing.avgScore < 0.5) {
+          existing.suggestedSkill = `패턴 ${pattern.id} 분류 정확도 낮음(avg ${(existing.avgScore * 100).toFixed(0)}%) — 키워드 보강 필요`;
+        } else if (metrics && metrics.errors >= 2) {
+          existing.suggestedSkill = `패턴 ${pattern.id} 실행 시 에러 다발 — 메서드 가드레일 점검 필요`;
+        }
       }
     } else {
       this.growthMap.set(pattern.id, {

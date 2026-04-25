@@ -306,13 +306,6 @@ async function runChat(options: ChatOptions): Promise<void> {
   /** 사용자 메시지 전송 — Orchestrator 경유 (Sprint 6) */
   async function sendMessage(content: string): Promise<void> {
     isGenerating = true;
-
-    // 패턴 분류 먼저 (응답 전에 표시)
-    const preClassification = patternRegistry.classify(content);
-    if (preClassification) {
-      process.stdout.write(`\x1b[2m[${preClassification.pattern.id} ${preClassification.pattern.name} ${(preClassification.score * 100).toFixed(0)}%]\x1b[0m `);
-    }
-
     messages.push({ role: 'user', content });
 
     abortController = new AbortController();
@@ -325,6 +318,11 @@ async function runChat(options: ChatOptions): Promise<void> {
       content,
       { signal: abortController.signal },
     );
+
+    // 패턴 분류 표시 (execute에서 분류한 결과 사용)
+    if (result.pattern) {
+      process.stdout.write(`\x1b[2m[${result.pattern.id} ${result.pattern.name} ${(result.pattern.score * 100).toFixed(0)}%]\x1b[0m `);
+    }
 
     // 세션 저장
     sessionStore.appendMessage(session, { role: 'user', content });
@@ -542,6 +540,12 @@ async function runPipeMode(): Promise<void> {
   const config = ensureDefaultConfig();
   const provider = await createAndInitProvider(config.provider || 'glm', config);
 
+  // 파이프 모드 세션/오케스트레이터 재사용 (Sprint 6)
+  const pipeSessionStore = new SessionStore();
+  const pipeSession = pipeSessionStore.create('pipe');
+  const pipeOrchestrator = new Orchestrator({ methodRegistry, patternRegistry });
+  const pipeMessages: ChatMessage[] = [];
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -572,20 +576,32 @@ async function runPipeMode(): Promise<void> {
         }
         continue;
       }
+      if (trimmed === '/reflect') {
+        console.log(pipeOrchestrator.getRecentReflection(5));
+        continue;
+      }
+      if (trimmed === '/growth') {
+        const growth = pipeOrchestrator.getGrowthReport();
+        const suggestions = pipeOrchestrator.getGrowthSuggestions();
+        for (const g of growth) {
+          const bar = '\x1b[33m' + '|'.repeat(Math.min(g.count, 20)) + '\x1b[0m';
+          console.log(`  ${g.patternId} x${g.count}  avg:${(g.avgScore * 100).toFixed(0)}%  ${bar}`);
+        }
+        for (const s of suggestions) {
+          console.log(`  \x1b[36m*\x1b[0m ${s}`);
+        }
+        continue;
+      }
       continue;
     }
 
-    // 파이프 모드 — Orchestrator 경유 (Sprint 6)
-    const pipeSessionStore = new SessionStore();
-    const pipeSession = pipeSessionStore.create('pipe');
-    const pipeOrchestrator = new Orchestrator({ methodRegistry, patternRegistry });
-
+    // 파이프 모드 — 재사용된 Orchestrator 경유 (Sprint 6)
     const pipeResult = await pipeOrchestrator.execute(
       provider,
       config.model || 'glm-5.1',
-      [],  // 빈 messages — execute 내부에서 시스템 프롬프트 구성
+      pipeMessages,
       trimmed,
-      undefined,  // 옵션 없음
+      undefined,
     );
 
     // 패턴 분류 표시
