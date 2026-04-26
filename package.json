@@ -1,10 +1,22 @@
 {
   "name": "airu",
-  "version": "1.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "AI agent harness CLI with pattern recognition, guardrails, and tool execution",
   "type": "module",
+  "bin": {
+    "airu": "./src/cli.ts"
+  },
   "scripts": {
-    "chat": "bun run src/cli.ts"
+    "chat": "bun run src/cli.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run typecheck && bun test"
+  },
+  "keywords": ["ai", "agent", "cli", "llm", "tool-use"],
+  "author": "Airu",
+  "license": "MIT",
+  "engines": {
+    "bun": ">=1.0.0"
   },
   "dependencies": {
     "commander": "^11.1.0"
