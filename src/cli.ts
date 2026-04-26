@@ -255,7 +255,11 @@ async function runChat(options: ChatOptions): Promise<void> {
     if (trimmed === '/reflect') {
       const recent = orchestrator.getRecentReflection(5);
       console.log(`\n\x1b[1m최근 회고:\x1b[0m`);
-      console.log(recent);
+      if (!recent || recent.includes('없음')) {
+        console.log(`  \x1b[2m아직 회고 기록이 없습니다. 몇 번 대화하면 자동으로 쌓입니다.\x1b[0m`);
+      } else {
+        console.log(recent);
+      }
       console.log();
       return true;
     }
@@ -263,6 +267,12 @@ async function runChat(options: ChatOptions): Promise<void> {
     if (trimmed === '/growth') {
       const growth = orchestrator.getGrowthReport();
       const suggestions = orchestrator.getGrowthSuggestions();
+      if (growth.length === 0 && suggestions.length === 0) {
+        console.log(`\n\x1b[1m성장 추적:\x1b[0m`);
+        console.log(`  \x1b[2m아직 수집된 패턴이 없습니다. 대화를 계속하면 자동으로 추적됩니다.\x1b[0m`);
+        console.log();
+        return true;
+      }
       console.log(`\n\x1b[1m성장 추적 (${growth.length}개 패턴):\x1b[0m`);
       for (const g of growth) {
         const bar = '\x1b[33m' + '|'.repeat(Math.min(g.count, 20)) + '\x1b[0m';
@@ -331,6 +341,12 @@ async function runChat(options: ChatOptions): Promise<void> {
     }
     if (result.reflection) {
       sessionStore.appendReflection(session, result.reflection);
+    }
+
+    // 성장 데이터 영속화
+    const growthReport = orchestrator.getGrowthReport();
+    if (growthReport.length > 0) {
+      sessionStore.appendGrowth(session, growthReport);
     }
 
     // 회고/성장 정보 출력

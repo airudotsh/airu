@@ -118,4 +118,15 @@ export class SessionStore {
     this.save(data);
     return data;
   }
+
+  /** 성장 데이터 추가 (자동 저장) */
+  appendGrowth(data: SessionData, entries: GrowthEntry[]): SessionData {
+    data.growth = entries;
+    // 최대 100개 성장 기록 유지
+    if (data.growth.length > 100) {
+      data.growth = data.growth.slice(-50);
+    }
+    this.save(data);
+    return data;
+  }
 }
