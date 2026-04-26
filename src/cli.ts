@@ -44,6 +44,17 @@ function registerTools(): void {
 // 메서드 등록 (Sprint 3)
 registerAllMethods();
 
+// 전역 에러 핸들링
+process.on('uncaughtException', (err) => {
+  console.error(`\x1b[31m[치명적 오류] ${(err as Error).message}\x1b[0m`);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error(`\x1b[31m[미처리 거부] ${(reason as Error).message}\x1b[0m`);
+  process.exit(1);
+});
+
 // 패턴 등록 (Sprint 5)
 const allPatterns = registerAllPatterns();
 for (const p of allPatterns) {
