@@ -1,15 +1,24 @@
 # airu
 
-AI agent harness CLI. Pattern recognition, guardrails, tool execution, and reflection — in your terminal.
+The personalized harness layer for AI coding agents — swap methods, swap tools, keep your flow.
 
-## Install
+## Quick Start
 
-### Prerequisites
+### Linux / macOS / WSL
 
-- [Bun](https://bun.sh) >= 1.3
-- ZAI GLM API key **or** [Ollama](https://ollama.com) running locally
+```bash
+bun install -g @airu/cli
+airu chat
+```
 
-### From source
+### Windows (Native)
+
+```powershell
+bun install -g @airu/cli
+airu chat
+```
+
+### From Source (Development)
 
 ```bash
 git clone https://github.com/airudotsh/airu.git
@@ -19,44 +28,44 @@ bun run build
 bun run chat
 ```
 
-That's it — no global install needed.
+## Prerequisites
+
+- [Bun](https://bun.sh) >= 1.3 (install: `curl -fsSL https://bun.sh/install | bash`)
+- ZAI GLM API key **or** [Ollama](https://ollama.com) running locally
 
 ## Configure
 
-airu stores config in `~/.airu/`. Create it automatically by running:
+airu stores all config in `~/.airu/`. First run creates it automatically.
 
-```bash
-bun run chat
-```
-
-### Environment variables
+### API Key
 
 Create `~/.airu/.env`:
 
 ```bash
-ZAI_GLM_KEY=your_zai_glm_key_here
-# Optional:
-# OPENAI_API_KEY=your_openai_key_here
+ZAI_GLM_KEY=your_key_here
 ```
 
 ```bash
-chmod 600 ~/.airu/.env
+chmod 600 ~/.airu/.env   # Linux/macOS only
 ```
 
-### Model configuration
+### Model Configuration
 
 Edit `~/.airu/airu.config.yaml`:
 
 ```yaml
-# Default provider (glm, openai, ollama)
+# Default provider
 provider: glm
 model: glm-5.1
 
-# Optional: define multiple models, switch with /model <name>
+# Switch between models with /model <name>
 models:
   glm:
     provider: glm
     model: glm-5.1
+  openai:
+    provider: openai
+    model: gpt-4o
   ollama-qwen:
     provider: ollama
     model: qwen3.6:35b-a3b
@@ -69,24 +78,24 @@ models:
 
 ## Usage
 
-### Interactive chat
+### Interactive Chat
 
 ```bash
-bun run chat          # from repo root
+airu chat
 ```
 
-### Pipe mode
+### Pipe Mode
 
 ```bash
-echo "list files in src/" | bun run chat
-cat code.ts | bun run chat
+echo "list files in src/" | airu chat
+cat code.ts | airu chat
 ```
 
-### Commands (inside chat)
+### In-Chat Commands
 
 | Command | Description |
 |---------|-------------|
-| `/model <name>` | Switch model (from config models list) |
+| `/model <name>` | Switch model (from config) |
 | `/provider <name>` | Switch provider (glm, openai, ollama) |
 | `/clear` | Clear conversation history |
 | `/tools` | List registered tools |
@@ -98,48 +107,30 @@ cat code.ts | bun run chat
 
 ## Architecture
 
-**Plugin-based monorepo** — core knows nothing about implementations. Adding a new model = adding one plugin file + two config lines.
-
 ```
-airu/                          # Bun workspace root
+airu/
 ├── packages/
-│   ├── core/                  # Zero-dependency core
-│   │   ├── interfaces/        # IModelProvider, ITool, IMethod, IPattern
-│   │   ├── registry/          # ModelRegistry, MethodRegistry, PatternRegistry
-│   │   └── engine/            # Agent, Orchestrator, Guardrails, SessionStore
-│   ├── plugins/               # Model + Method + Pattern + Tool implementations
-│   │   ├── models/            # GLM, OpenAI, Ollama (one file per provider)
-│   │   ├── methods/           # M1~M11 (Perception, Reasoning, Judgment...)
-│   │   ├── patterns/          # P1~P18 (18 reactive patterns)
-│   │   └── tools/             # terminal, file, web
-│   └── cli/                   # Command-line interface
+│   ├── core/        # Zero-dependency core
+│   │   ├── interfaces/  # IModelProvider, ITool, IMethod, IPattern
+│   │   ├── registry/    # ModelRegistry, MethodRegistry, PatternRegistry
+│   │   └── engine/      # Agent, Orchestrator, Guardrails, SessionStore
+│   ├── plugins/     # All implementations
+│   │   ├── models/  # GLM, OpenAI, Ollama
+│   │   ├── methods/ # M1~M11 (Perception, Reasoning, Judgment...)
+│   │   ├── patterns/ # P1~P18 (18 reactive patterns)
+│   │   └── tools/   # terminal, file, web
+│   └── cli/         # Command-line interface
 └── config/
-    └── default.yaml           # Default config
+    └── default.yaml
 ```
 
-**Pipeline:**
-
-```
-User Input
-  -> Pattern Classification (P1~P18)
-  -> Method Selection (M1~M11)
-  -> Tool Agent Loop (terminal, file, web)
-  -> Guardrails (iteration/time limits)
-  -> Reflection + Growth Tracking
-```
-
-**Sessions** — stored as JSON in `~/.airu/sessions/`, auto-trimmed to 100 messages.
-
-**Growth** — repeated patterns are tracked; saved as skill files to `~/.airu/skills/`.
-
-## Security
-
-- API keys stored in `~/.airu/.env` with `0600` permissions
-- Sensitive values masked in error messages
-- Tool execution requires user confirmation in interactive mode
-- `.env` excluded from version control
+**Pipeline:** User Input → Pattern Classification (P1~P18) → Method Selection (M1~M11) → Tool Agent Loop → Guardrails → Reflection + Growth Tracking
 
 ## Requirements
 
-- Bun >= 1.3
+- Bun >= 1.3 or Node >= 18
 - ZAI GLM API key **or** Ollama at `localhost:11434`
+
+## License
+
+MIT

@@ -5,15 +5,19 @@
   "bin": {
     "airu": "./dist/cli.js"
   },
-  "files": ["dist/"],
-  "dependencies": {
-    "@airu/core": "workspace:*",
-    "@airu/plugins": "workspace:*",
-    "commander": "^11.1.0"
+  "engines": {
+    "node": ">=18.0.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/airudotsh/airu.git"
+  },
+  "license": "MIT",
+  "files": ["dist/"],
+  "dependencies": {},
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "bun build src/index.ts --outfile dist/cli.js --target node",
+    "build": "bun build src/index.ts --outfile dist/cli.js --target node && node -e \"const f='dist/cli.js';const c=require('fs').readFileSync(f,'utf8');require('fs').writeFileSync(f,c.replace('#!/usr/bin/env bun','#!/usr/bin/env node'))\"",
     "chat": "bun run src/index.ts chat"
   }
 }

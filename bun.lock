@@ -18,11 +18,6 @@
       "bin": {
         "airu": "./dist/cli.js",
       },
-      "dependencies": {
-        "@airu/core": "workspace:*",
-        "@airu/plugins": "workspace:*",
-        "commander": "^11.1.0",
-      },
     },
     "packages/core": {
       "name": "@airu/core",
@@ -44,8 +39,6 @@
     "@airu/plugins": ["@airu/plugins@workspace:packages/plugins"],
 
     "@types/node": ["@types/node@25.6.0", "", { "dependencies": { "undici-types": "~7.19.0" } }, "sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ=="],
-
-    "commander": ["commander@11.1.0", "", {}, "sha512-yPVavfyCcRhmorC7rWlkHn15b4wDVgVmBA7kV4QVBsF7kv/9TKJAbAXVTxvTnwP8HHKjRCJDClKbciiYS7p0DQ=="],
 
     "typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
