@@ -23,7 +23,7 @@ import type {
   ChatMessage,
   StreamChunk,
 } from './core/provider';
-import { loadConfig, saveConfig, ensureDefaultConfig, getConfigPath } from './core/config';
+import { loadConfig, saveConfig, ensureDefaultConfig, getConfigPath, maskSecret } from './core/config';
 
 // 툴 등록
 import { TerminalTool } from './tools/terminal';
@@ -46,12 +46,12 @@ registerAllMethods();
 
 // 전역 에러 핸들링
 process.on('uncaughtException', (err) => {
-  console.error(`\x1b[31m[치명적 오류] ${(err as Error).message}\x1b[0m`);
+  console.error(`\x1b[31m[치명적 오류] ${maskSecret((err as Error).message)}\x1b[0m`);
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error(`\x1b[31m[미처리 거부] ${(reason as Error).message}\x1b[0m`);
+  console.error(`\x1b[31m[미처리 거부] ${maskSecret(String(reason))}\x1b[0m`);
   process.exit(1);
 });
 
@@ -131,7 +131,7 @@ async function runChat(options: ChatOptions): Promise<void> {
   try {
     activeProvider = await createAndInitProvider(providerName, config);
   } catch (e) {
-    console.log(`\x1b[31m[오류] ${(e as Error).message}\x1b[0m`);
+    console.error(`\x1b[31m[오류] ${maskSecret((e as Error).message)}\x1b[0m`);
     return;
   }
 
@@ -337,7 +337,26 @@ async function runChat(options: ChatOptions): Promise<void> {
       currentModel,
       messages,
       content,
-      { signal: abortController.signal },
+      {
+        signal: abortController.signal,
+        confirmTool: async (toolName: string, args: Record<string, unknown>) => {
+          // 대화형 모드: 위험한 명령어는 사용자 승인 필요
+          if (toolName === 'terminal') {
+            const cmd = String(args.command || '');
+            const dangerous = /^(rm\s|sudo\s|chmod\s|mkfs|dd\s|>\s|curl\s.*\|\s*sh|wget.*\|\s*sh)/i.test(cmd);
+            if (dangerous) {
+              process.stdout.write(`\x1b[31m\n[보안] 위험한 명령 감지: ${cmd.slice(0, 80)}\x1b[0m\n`);
+              process.stdout.write('\x1b[33m실행하시겠습니까? (y/N): \x1b[0m');
+              const answer = await new Promise<string>((resolve) => {
+                const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+                rl.question('', (a) => { rl.close(); resolve(a.trim().toLowerCase()); });
+              });
+              return answer === 'y' || answer === 'yes';
+            }
+          }
+          return true; // 일반 명령은 자동 승인
+        },
+      },
     );
 
     // 패턴 분류 표시 (execute에서 분류한 결과 사용)

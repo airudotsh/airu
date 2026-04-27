@@ -84,7 +84,7 @@ export class Orchestrator {
     model: string,
     messages: ChatMessage[],
     userInput: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; confirmTool?: (toolName: string, args: Record<string, unknown>) => Promise<boolean> },
   ): Promise<{
     content: string;
     pattern: { id: string; name: string; score: number } | null;
@@ -150,6 +150,7 @@ export class Orchestrator {
         warnAtIteration: this.guardrailsOptions.warnAtIteration,
         abortAtIteration: this.guardrailsOptions.abortAtIteration,
       },
+      confirmTool: options?.confirmTool,
     });
 
     const durationMs = Date.now() - startTime;

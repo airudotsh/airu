@@ -4,8 +4,20 @@ AI agent harness CLI. Pattern recognition, guardrails, tool execution, and refle
 
 ## Install
 
+### From npm (coming soon)
+
 ```bash
+bun add -g airu
+airu chat
+```
+
+### From source (development)
+
+```bash
+git clone https://github.com/airouz/airu.git
+cd airu
 bun install
+bun run chat
 ```
 
 ## Configure
@@ -21,7 +33,7 @@ systemPrompt: ""       # optional system prompt
 Set your API key in `~/.airu/.env`:
 
 ```
-ZAI_API_KEY=your-api-key-here
+ZAI_API_KEY=your_key_here
 ```
 
 For local models (Ollama):
@@ -29,24 +41,29 @@ For local models (Ollama):
 ```yaml
 provider: ollama
 model: qwen3.6:35b-a3b  # or gemma4:26b
+ollamaUrl: http://localhost:11434
 ```
+
+See `.env.example` for reference.
 
 ## Usage
 
 ### Interactive Chat
 
 ```bash
-bun run src/cli.ts chat
+airu chat
+# or in development:
+bun run chat
 ```
 
 ### Pipe Mode
 
 ```bash
-echo "list files in src/" | bun run src/cli.ts chat
-cat code.ts | bun run src/cli.ts chat
+echo "list files in src/" | airu chat
+cat code.ts | airu chat
 ```
 
-### Commands
+### Commands (inside chat)
 
 | Command | Description |
 |---------|-------------|
@@ -65,12 +82,23 @@ cat code.ts | bun run src/cli.ts chat
 
 ```
 User Input
-  → Pattern Classification (18 patterns)
-  → Method Selection (11 methods)
-  → Tool Agent Loop (terminal, file, web)
-  → Guardrails (iteration/time limits, error handling)
-  → Reflection + Growth Tracking
+  -> Pattern Classification (18 patterns)
+  -> Method Selection (11 methods)
+  -> Tool Agent Loop (terminal, file, web)
+  -> Guardrails (iteration/time limits, error handling)
+  -> Reflection + Growth Tracking
 ```
+
+**Sessions** are stored as JSON in `~/.airu/sessions/`. Each session preserves full message history with automatic trimming (100 messages max, trimmed to 80).
+
+**Dependencies** are minimal by design: only `commander` as external dependency. YAML parsing, SSE streaming, and HTTP calls use native implementations (Bun/Node built-ins).
+
+## Security
+
+- API keys are stored in `~/.airu/.env` with `0600` file permissions
+- Sensitive data is automatically masked in error messages
+- Tool execution (terminal commands) requires user confirmation in interactive mode
+- `.env` is excluded from version control via `.gitignore`
 
 ## Requirements
 

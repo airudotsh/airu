@@ -204,7 +204,7 @@ export async function runAgentLoop(
   provider: IModelProvider,
   model: string,
   messages: ChatMessage[],
-  options: AgentOptions & { signal?: AbortSignal } = {},
+  options: AgentOptions & { signal?: AbortSignal; confirmTool?: (toolName: string, args: Record<string, unknown>) => Promise<boolean> } = {},
 ): Promise<{ content: string; hadError?: boolean; metrics?: ExecutionMetrics }> {
   const maxTokens = options.maxTokensEstimate ?? DEFAULT_MAX_TOKENS;
   const guardrails = new Guardrails(options.guardrails ?? {});
@@ -294,7 +294,21 @@ export async function runAgentLoop(
       }
 
       process.stdout.write('\r\x1b[K');
-      console.log(`\x1b[33m[툴 실행 중: ${tc.name}]\x1b[0m`);
+      console.log(`\x1b[33m[툴 실행 중: ${tc.name}]${tc.name === 'terminal' ? ` → ${String(args.command || '').slice(0, 80)}` : ''}\x1b[0m`);
+
+      // 툴 실행 승인 (대화형 모드에서만)
+      if (options.confirmTool) {
+        const approved = await options.confirmTool(tc.name, args);
+        if (!approved) {
+          messages.push({
+            role: 'tool',
+            content: 'Error: 사용자가 실행을 거부했습니다.',
+            tool_call_id: tc.id,
+            name: tc.name,
+          });
+          continue;
+        }
+      }
 
       const result = await executeToolCall(tc.name, args);
 

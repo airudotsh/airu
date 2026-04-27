@@ -10,6 +10,12 @@ import * as os from 'os';
  */
 function loadEnvFile(envPath: string): void {
   if (!fs.existsSync(envPath)) return;
+  // .env 파일 권한을 0600으로 설정 (소유자만 읽기/쓰기)
+  try {
+    fs.chmodSync(envPath, 0o600);
+  } catch {
+    // Windows 등 chmod 미지원 환경에서는 무시
+  }
   const content = fs.readFileSync(envPath, 'utf-8');
   for (const line of content.split('\n')) {
     const trimmed = line.trim();
@@ -30,7 +36,18 @@ function loadEnvFile(envPath: string): void {
 }
 
 // Auto-load .env from ~/.airu/.env
-loadEnvFile(path.join(os.homedir(), '.airu', '.env'));
+const envDir = path.join(os.homedir(), '.airu');
+if (!fs.existsSync(envDir)) {
+  fs.mkdirSync(envDir, { recursive: true, mode: 0o700 });
+}
+loadEnvFile(path.join(envDir, '.env'));
+
+/**
+ * 마스킹 유틸 — API 키 등 민감정보를 로그/에러에서 숨김
+ */
+export function maskSecret(text: string): string {
+  return text.replace(/([A-Za-z0-9]{8})[A-Za-z0-9]{16,}([A-Za-z0-9]{4})/g, '$1****$2');
+}
 
 export interface AiruConfig {
   [key: string]: string | undefined;

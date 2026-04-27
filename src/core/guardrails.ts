@@ -194,7 +194,7 @@ export class Guardrails {
     this.logger.reset();
   }
 
-  /** 에러 처리 + 자동 재시도. 누적 재시도 한도도 적용 */
+  /** 에러 처리 + 자동 재시도. Exponential backoff 적용 */
   async handleError(error: string): Promise<{
     shouldRetry: boolean;
     delayMs: number;
@@ -237,7 +237,10 @@ export class Guardrails {
       reason: error.slice(0, 80),
     });
 
-    return { shouldRetry: action === 'retry' || action === 'fallback', delayMs, message };
+    // Exponential backoff: baseDelay * 2^(attempt-1), capped at 30s
+    const backoffDelay = Math.min(delayMs * Math.pow(2, this.retryCount - 1), 30000);
+
+    return { shouldRetry: action === 'retry' || action === 'fallback', delayMs: backoffDelay, message };
   }
 
   /** 검증 스텝 */
