@@ -1,0 +1,47 @@
+# airu configuration
+version: 1
+
+models:
+  glm-5.1:
+    provider: glm
+    endpoint: https://api.z.ai/api/coding/paas/v4/chat/completions
+    api_key: ${ZAI_API_KEY}
+    default: true
+
+  gpt-4o:
+    provider: openai
+    model: gpt-4o
+    api_key: ${OPENAI_API_KEY}
+
+  qwen-local:
+    provider: ollama
+    model: qwen3.6:35b-a3b
+    endpoint: http://localhost:11434
+
+system_prompt: "You are airu, a personalized agent harness."
+
+channel: cli
+
+methods:
+  perception:
+    enabled: true
+  reasoning:
+    enabled: true
+  judgment:
+    enabled: true
+  planning:
+    enabled: true
+  execution:
+    enabled: true
+  monitoring:
+    enabled: true
+  learning:
+    enabled: true
+  communication:
+    enabled: true
+  tools:
+    enabled: true
+  creativity:
+    enabled: true
+  knowledge:
+    enabled: true

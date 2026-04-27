@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
-import { PatternRegistry } from '../src/core/pattern-registry';
-import { registerAllPatterns } from '../src/patterns';
+import { PatternRegistry } from '@airu/core';
+import { registerAllPatterns } from '@airu/plugins';
 
 describe('PatternRegistry', () => {
   const registry = new PatternRegistry();

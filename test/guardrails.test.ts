@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { classifyError } from '../src/core/guardrails';
+import { classifyError } from '@airu/core';
 
 describe('classifyError', () => {
   test('network: ECONNREFUSED', () => {

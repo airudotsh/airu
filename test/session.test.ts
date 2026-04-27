@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterAll } from 'bun:test';
-import { SessionStore } from '../src/core/session-store';
+import { SessionStore } from '@airu/core';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -51,7 +51,6 @@ describe('SessionStore', () => {
     for (let i = 0; i < 120; i++) {
       store.appendMessage(session, { role: 'user', content: `msg ${i}` });
     }
-    // 100 초과 시 slice(-80) → 80 + 추가 푸시. 120번이면 80+(120-101)=99
     expect(session.messages.length).toBeLessThanOrEqual(100);
   });
 

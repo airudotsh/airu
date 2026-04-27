@@ -1,0 +1,19 @@
+{
+  "name": "@airu/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "airu": "./dist/cli.js"
+  },
+  "files": ["dist/"],
+  "dependencies": {
+    "@airu/core": "workspace:*",
+    "@airu/plugins": "workspace:*",
+    "commander": "^11.1.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "bun build src/index.ts --outfile dist/cli.js --target node",
+    "chat": "bun run src/index.ts chat"
+  }
+}

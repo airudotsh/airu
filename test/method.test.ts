@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
-import { MethodRegistry } from '../src/core/method-registry';
-import type { IMethod } from '../src/core/interfaces/IMethod';
+import { MethodRegistry } from '@airu/core';
+import type { IMethod } from '@airu/core';
 
 describe('MethodRegistry', () => {
   const registry = new MethodRegistry();

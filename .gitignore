@@ -6,3 +6,4 @@ dist/
 Thumbs.db
 ~/.airu/sessions/
 .ralph/
+src_backup/

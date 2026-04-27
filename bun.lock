@@ -4,16 +4,45 @@
   "workspaces": {
     "": {
       "name": "airu",
-      "dependencies": {
-        "commander": "^11.1.0",
-      },
       "devDependencies": {
+        "@airu/cli": "workspace:*",
+        "@airu/core": "workspace:*",
+        "@airu/plugins": "workspace:*",
         "@types/node": "^25.6.0",
         "typescript": "^6.0.3",
       },
     },
+    "packages/cli": {
+      "name": "@airu/cli",
+      "version": "0.1.0",
+      "bin": {
+        "airu": "./dist/cli.js",
+      },
+      "dependencies": {
+        "@airu/core": "workspace:*",
+        "@airu/plugins": "workspace:*",
+        "commander": "^11.1.0",
+      },
+    },
+    "packages/core": {
+      "name": "@airu/core",
+      "version": "0.1.0",
+    },
+    "packages/plugins": {
+      "name": "@airu/plugins",
+      "version": "0.1.0",
+      "dependencies": {
+        "@airu/core": "workspace:*",
+      },
+    },
   },
   "packages": {
+    "@airu/cli": ["@airu/cli@workspace:packages/cli"],
+
+    "@airu/core": ["@airu/core@workspace:packages/core"],
+
+    "@airu/plugins": ["@airu/plugins@workspace:packages/plugins"],
+
     "@types/node": ["@types/node@25.6.0", "", { "dependencies": { "undici-types": "~7.19.0" } }, "sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ=="],
 
     "commander": ["commander@11.1.0", "", {}, "sha512-yPVavfyCcRhmorC7rWlkHn15b4wDVgVmBA7kV4QVBsF7kv/9TKJAbAXVTxvTnwP8HHKjRCJDClKbciiYS7p0DQ=="],
