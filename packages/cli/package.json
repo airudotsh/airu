@@ -21,10 +21,17 @@
   "author": "Airu",
   "license": "MIT",
   "files": ["dist/"],
-  "dependencies": {},
+  "dependencies": {
+    "ink": "^7.0.1",
+    "react": "^19.2.5"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "bun build src/index.ts --outfile dist/cli.js --target node && node -e \"const f='dist/cli.js';const c=require('fs').readFileSync(f,'utf8');require('fs').writeFileSync(f,c.replace('#!/usr/bin/env bun','#!/usr/bin/env node'))\"",
     "chat": "bun run src/index.ts chat"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "react-devtools-core": "^7.0.1"
   }
 }

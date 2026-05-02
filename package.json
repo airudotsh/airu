@@ -8,11 +8,11 @@
     "build": "bun run --filter '*' build",
     "test": "bun test",
     "typecheck": "bun run --filter '*' typecheck",
-    "chat": "bun run --filter @airu/cli chat",
+    "chat": "bun run --filter 'airu' chat",
     "prepublishOnly": "bun run build && bun run typecheck && bun test"
   },
   "devDependencies": {
-    "@airu/cli": "workspace:*",
+    "airu": "workspace:*",
     "@airu/core": "workspace:*",
     "@airu/plugins": "workspace:*",
     "@types/node": "^25.6.0",

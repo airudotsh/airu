@@ -81,6 +81,7 @@ interface ChatOptions {
   model?: string;
   provider?: string;
   system?: string;
+  tui?: boolean;
 }
 
 // --- Provider ---
@@ -114,6 +115,37 @@ function formatError(error: string): string {
 
 // --- 채팅 실행 ---
 async function runChat(options: ChatOptions): Promise<void> {
+  // TUI 모드
+  if (options.tui) {
+    const { default: React } = await import('react');
+    const { render } = await import('ink');
+    const { TuiApp } = await import('./tui-app.js');
+
+    const config = ensureDefaultConfig();
+    const providerName = options.provider || config.provider || 'glm';
+    const activeProvider = await createAndInitProvider(providerName, config);
+    const model = options.model || config.model || 'glm-5.1';
+
+    const orchestrator = new Orchestrator({
+      patternRegistry,
+      methodRegistry,
+      options: { enableReflection: true, enableGrowth: true },
+    });
+
+    const sendMessage = async (content: string) => {
+      return orchestrator.execute(activeProvider, model, [], content);
+    };
+
+    render(React.createElement(TuiApp, {
+      provider: activeProvider,
+      model,
+      providerName,
+      sendMessage,
+    }));
+    return;
+  }
+
+  // 기본 readline 모드
   const config = ensureDefaultConfig();
   const providerName = options.provider || config.provider || 'glm';
 
@@ -528,6 +560,7 @@ program
   .option('-m, --model <name>', '사용할 모델')
   .option('-p, --provider <name>', '사용할 프로바이더 (glm, ollama)')
   .option('-s, --system <prompt>', '시스템 프롬프트')
+  .option('--tui', 'Ink TUI 모드로 실행')
   .action(runChat);
 
 program
