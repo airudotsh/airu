@@ -52,6 +52,9 @@ export type { GuardrailEvent, GuardrailAction, ErrorCategory, ExecutionMetrics, 
 
 export { SessionStore } from './engine/SessionStore';
 
+export { KnowledgeStore } from './engine/KnowledgeStore';
+export type { KnowledgeEntry, KnowledgeSearchResult } from './engine/KnowledgeStore';
+
 export { loadConfig, saveConfig, ensureDefaultConfig, getConfigPath, maskSecret } from './engine/Config';
 export type { AiruConfig } from './engine/Config';
 

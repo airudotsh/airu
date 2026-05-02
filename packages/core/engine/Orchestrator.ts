@@ -13,6 +13,7 @@ import type { ExecutionMetrics } from './Guardrails';
 import { runAgentLoop } from './Agent';
 import type { IPattern } from '../interfaces/IPattern';
 import { createSkillFromGrowth } from './GrowthSkillGenerator';
+import { KnowledgeStore } from './KnowledgeStore';
 
 /** 회고 리포트 */
 export interface ReflectionReport {
@@ -51,6 +52,7 @@ export class Orchestrator {
   private readonly patternRegistry: PatternRegistry;
   private readonly methodRegistry: MethodRegistry;
   private readonly guardrailsOptions: OrchestratorOptions;
+  private readonly knowledgeStore: KnowledgeStore | null;
 
   // 방향 관리
   private recentPatterns: Array<{ id: string; timestamp: number }> = [];
@@ -68,10 +70,12 @@ export class Orchestrator {
     patternRegistry: PatternRegistry;
     methodRegistry: MethodRegistry;
     options?: OrchestratorOptions;
+    knowledgeStore?: KnowledgeStore;
   }) {
     this.patternRegistry = options.patternRegistry;
     this.methodRegistry = options.methodRegistry;
     this.guardrailsOptions = options.options ?? {};
+    this.knowledgeStore = options.knowledgeStore ?? null;
 
     this.directionWarnThreshold = options.options?.directionWarnThreshold ?? 5;
     this.enableReflection = options.options?.enableReflection ?? true;
@@ -128,6 +132,17 @@ export class Orchestrator {
         '직접 방법을 알려주지 말고 툴로 직접 실행하세요.',
       ].join('\n');
       workingMessages.unshift({ role: 'system', content: toolSystemBase });
+    }
+
+    // 지식 자동 주입
+    if (this.knowledgeStore) {
+      const relevantKnowledge = this.knowledgeStore.getRelevantContext(userInput);
+      if (relevantKnowledge) {
+        workingMessages[0] = {
+          ...workingMessages[0],
+          content: workingMessages[0].content + '\n\n' + relevantKnowledge,
+        };
+      }
     }
 
     // 패턴에 해당하는 메서드 정보를 system prompt에 추가

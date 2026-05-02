@@ -8,6 +8,7 @@ import * as readline from 'readline';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { execSync } from 'child_process';
 import { GLMProvider } from '@airu/plugins';
 import { OllamaProvider } from '@airu/plugins';
 import { registry } from '@airu/core';
@@ -17,6 +18,7 @@ import { patternRegistry } from '@airu/core';
 import { registerAllPatterns } from '@airu/plugins';
 import { Orchestrator } from '@airu/core';
 import { SessionStore } from '@airu/core';
+import { KnowledgeStore } from '@airu/core';
 import { runAgentLoop } from '@airu/core';
 import type {
   IModelProvider,
@@ -62,6 +64,9 @@ const HELP_TEXT = `
   /patterns        - 패턴 분류 결과 표시
   /reflect         - 최근 회고 리포트 표시
   /growth          - 성장 추적 현황 표시
+  /save            - 현재 세션을 지식베이스에 저장
+  /remember <내용>  - 지식 저장
+  /knowledge       - 저장된 지식 목록
   /help            - 이 도움말 표시
   /exit            - 종료`;
 
@@ -126,10 +131,20 @@ async function runChat(options: ChatOptions): Promise<void> {
     const activeProvider = await createAndInitProvider(providerName, config);
     const model = options.model || config.model || 'glm-5.1';
 
+    // 프로젝트 감지 (TUI 모드)
+    let projectName = 'default';
+    try {
+      const gitRemote = execSync('git remote get-url origin 2>/dev/null', { cwd: process.cwd(), stdio: 'pipe' }).toString().trim();
+      const match = gitRemote.match(/([^/]+?)(?:\.git)?$/);
+      if (match) projectName = match[1];
+    } catch { /* 기본값 사용 */ }
+    const knowledgeStore = new KnowledgeStore(projectName);
+
     const orchestrator = new Orchestrator({
       patternRegistry,
       methodRegistry,
       options: { enableReflection: true, enableGrowth: true },
+      knowledgeStore,
     });
 
     const sendMessage = async (content: string) => {
@@ -148,6 +163,20 @@ async function runChat(options: ChatOptions): Promise<void> {
   // 기본 readline 모드
   const config = ensureDefaultConfig();
   const providerName = options.provider || config.provider || 'glm';
+
+  // 프로젝트 감지
+  let projectName = 'default';
+  try {
+    const gitRemote = execSync('git remote get-url origin 2>/dev/null', { cwd: process.cwd(), stdio: 'pipe' }).toString().trim();
+    const match = gitRemote.match(/([^/]+?)(?:\.git)?$/);
+    if (match) projectName = match[1];
+  } catch {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8'));
+      if (pkg.name) projectName = pkg.name.replace(/[@/]/g, '-');
+    } catch { /* 기본값 사용 */ }
+  }
+  const knowledgeStore = new KnowledgeStore(projectName);
 
   let activeProvider: IModelProvider;
   try {
@@ -184,6 +213,7 @@ async function runChat(options: ChatOptions): Promise<void> {
     patternRegistry,
     methodRegistry,
     options: { enableReflection: true, enableGrowth: true, directionWarnThreshold: 5 },
+    knowledgeStore,
   });
   const sessionStore = new SessionStore();
   const session = sessionStore.create();
@@ -232,6 +262,53 @@ async function runChat(options: ChatOptions): Promise<void> {
       messages.length = 0;
       messages.push({ role: 'system', content: effectiveSystemPrompt });
       console.log('\x1b[36m[대화가 초기화되었습니다]\x1b[0m');
+      return true;
+    }
+
+    if (trimmed === '/save') {
+      const sessionData = messages
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .map(m => m.content)
+        .filter(Boolean);
+      const summary = sessionData.slice(-6).map(c => c.slice(0, 100)).join(' | ');
+      const usedPatterns = orchestrator.getGrowthReport().map(g => g.patternId);
+      knowledgeStore.saveSessionSummary(session.id, {
+        summary: summary.slice(0, 500),
+        learned: [],
+        patterns: usedPatterns,
+        tags: [currentModel, currentProvider],
+      });
+      console.log('\x1b[36m[세션이 지식베이스에 저장되었습니다]\x1b[0m');
+      return true;
+    }
+
+    if (trimmed.startsWith('/remember ')) {
+      const content = trimmed.slice(10).trim();
+      if (!content) {
+        console.log('\x1b[33m[저장할 내용을 입력하세요]\x1b[0m');
+        return true;
+      }
+      knowledgeStore.saveLearned({
+        topic: content.slice(0, 50),
+        content,
+        patterns: [],
+        tags: [],
+      });
+      console.log('\x1b[36m[지식이 저장되었습니다]\x1b[0m');
+      return true;
+    }
+
+    if (trimmed === '/knowledge') {
+      const entries = knowledgeStore.search('', 10);
+      if (entries.length === 0) {
+        console.log('\x1b[2m저장된 지식이 없습니다\x1b[0m');
+      } else {
+        console.log(`\n\x1b[1m저장된 지식 (${entries.length}개):\x1b[0m`);
+        for (const e of entries) {
+          console.log(`  \x1b[33m${e.entry.title}\x1b[0m ${(e.relevance * 100).toFixed(0)}%`);
+        }
+        console.log();
+      }
       return true;
     }
 
