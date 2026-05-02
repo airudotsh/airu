@@ -6,6 +6,7 @@ import type { IMethod, MethodInput, MethodContext, MethodOutput } from '@airu/co
 
 export class ToolsMethod implements IMethod {
   readonly id = 'M9';
+  readonly userLabel = '도구 사용';
   readonly name = 'tools';
   readonly description = '터미널, 파일, API 등 외부 도구를 활용하여 작업 수행.';
   readonly category: 'common' | 'project' = 'common';

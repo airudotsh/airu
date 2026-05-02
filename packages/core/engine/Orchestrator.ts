@@ -96,11 +96,19 @@ export class Orchestrator {
   }> {
     const startTime = Date.now();
 
-    // 1. 패턴 분류
+    // 패턴 분류
     const classification = this.patternRegistry.classify(userInput);
     const patternInfo = classification
       ? { id: classification.pattern.id, name: classification.pattern.name, score: classification.score }
       : null;
+
+    // 사용자 친화적 실행 계획 출력
+    if (classification) {
+      const patternSteps = classification.pattern.steps();
+      const planLine = patternSteps.map(s => s.label).join(' → ');
+      process.stdout.write(`\x1b[36m  분석: ${classification.pattern.name} (${(classification.score * 100).toFixed(0)}%)\x1b[0m\n`);
+      process.stdout.write(`\x1b[2m  계획: ${planLine}\x1b[0m\n\n`);
+    }
 
     // 2. 방향 관리 체크
     const directionWarning = this.checkDirection(patternInfo);

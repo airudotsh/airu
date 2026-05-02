@@ -6,6 +6,7 @@ import type { IMethod, MethodInput, MethodContext, MethodOutput } from '@airu/co
 
 export class CommunicationMethod implements IMethod {
   readonly id = 'M8';
+  readonly userLabel = '정보 전달';
   readonly name = 'communication';
   readonly description = '사용자에게 명확하고 적절한 방식으로 결과 전달.';
   readonly category: 'common' | 'project' = 'common';

@@ -6,6 +6,7 @@ import type { IMethod, MethodInput, MethodContext, MethodOutput } from '@airu/co
 
 export class ReasoningMethod implements IMethod {
   readonly id = 'M2';
+  readonly userLabel = '원인 분석';
   readonly name = 'reasoning';
   readonly description = '논리적 추론, 연역, 귀납, 인과관계 분석.';
   readonly category: 'common' | 'project' = 'common';

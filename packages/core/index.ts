@@ -26,6 +26,7 @@ export type {
 
 export type { IPattern } from './interfaces/IPattern';
 export { KeywordPattern } from './interfaces/IPattern';
+export type { PatternStep } from './interfaces/IPattern';
 
 export type {
   IChannel,

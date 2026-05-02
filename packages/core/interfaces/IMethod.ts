@@ -37,6 +37,7 @@ export interface IMethod {
   readonly id: string;
   readonly name: string;
   readonly description: string;
+  readonly userLabel: string;
   readonly category: 'common' | 'project';
   readonly defaultEnabled?: boolean;
   execute(input: MethodInput, context: MethodContext): Promise<MethodOutput>;

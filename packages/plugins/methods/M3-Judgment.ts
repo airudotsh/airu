@@ -6,6 +6,7 @@ import type { IMethod, MethodInput, MethodContext, MethodOutput } from '@airu/co
 
 export class JudgmentMethod implements IMethod {
   readonly id = 'M3';
+  readonly userLabel = '방향 결정';
   readonly name = 'judgment';
   readonly description = '정보 기반 판단, 리스크 평가, 옵션 비교.';
   readonly category: 'common' | 'project' = 'common';

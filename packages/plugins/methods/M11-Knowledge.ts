@@ -6,6 +6,7 @@ import type { IMethod, MethodInput, MethodContext, MethodOutput } from '@airu/co
 
 export class KnowledgeMethod implements IMethod {
   readonly id = 'M11';
+  readonly userLabel = '지식 활용';
   readonly name = 'knowledge';
   readonly description = '외부 지식/문서 검색, 사실 검증, 정보 조립.';
   readonly category: 'common' | 'project' = 'common';

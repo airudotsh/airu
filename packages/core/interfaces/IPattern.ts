@@ -1,9 +1,16 @@
+/** 패턴의 실행 단계 정의 */
+export interface PatternStep {
+  label: string;
+  methodIds: string[];
+}
+
 export interface IPattern {
   readonly id: string;
   readonly name: string;
   readonly description: string;
   match(input: string): number;
   methods(): string[];
+  steps(): PatternStep[];
 }
 
 /** 키워드 기반 패턴 베이스 클래스 */
@@ -15,6 +22,7 @@ export abstract class KeywordPattern implements IPattern {
   protected abstract readonly keywordsEn: string[];
   protected readonly weight: number = 1.0;
   protected abstract readonly methodIds: string[];
+  protected readonly _steps?: PatternStep[];
 
   match(input: string): number {
     const lower = input.toLowerCase();
@@ -29,4 +37,10 @@ export abstract class KeywordPattern implements IPattern {
   }
 
   methods(): string[] { return [...this.methodIds]; }
+
+  steps(): PatternStep[] {
+    if (this._steps) return this._steps;
+    // 기본: methodIds를 그대로 사용자 라벨 없이 반환
+    return this.methodIds.map(id => ({ label: id, methodIds: [id] }));
+  }
 }

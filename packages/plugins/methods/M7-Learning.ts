@@ -6,6 +6,7 @@ import type { IMethod, MethodInput, MethodContext, MethodOutput } from '@airu/co
 
 export class LearningMethod implements IMethod {
   readonly id = 'M7';
+  readonly userLabel = '검증';
   readonly name = 'learning';
   readonly description = '실행 결과에서 학습, 패턴 발견, 개선점 도출.';
   readonly category: 'common' | 'project' = 'common';

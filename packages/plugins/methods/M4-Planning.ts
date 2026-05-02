@@ -6,6 +6,7 @@ import type { IMethod, MethodInput, MethodContext, MethodOutput } from '@airu/co
 
 export class PlanningMethod implements IMethod {
   readonly id = 'M4';
+  readonly userLabel = '계획 수립';
   readonly name = 'planning';
   readonly description = '목표 분해, 작업 순서 계획, 마일스톤 설정.';
   readonly category: 'common' | 'project' = 'common';

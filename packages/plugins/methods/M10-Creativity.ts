@@ -6,6 +6,7 @@ import type { IMethod, MethodInput, MethodContext, MethodOutput } from '@airu/co
 
 export class CreativityMethod implements IMethod {
   readonly id = 'M10';
+  readonly userLabel = '아이디어 탐색';
   readonly name = 'creativity';
   readonly description = '새로운 아이디어 생성, 대체안 Brainstorming.';
   readonly category: 'common' | 'project' = 'common';

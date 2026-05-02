@@ -381,10 +381,7 @@ async function runChat(options: ChatOptions): Promise<void> {
       },
     );
 
-    // 패턴 분류 표시 (execute에서 분류한 결과 사용)
-    if (result.pattern) {
-      process.stdout.write(`\x1b[2m[${result.pattern.id} ${result.pattern.name} ${(result.pattern.score * 100).toFixed(0)}%]\x1b[0m `);
-    }
+    // 패턴 분류 결과는 Orchestrator에서 이미 출력됨
 
     // 세션 저장
     sessionStore.appendMessage(session, { role: 'user', content });
@@ -672,10 +669,7 @@ async function runPipeMode(): Promise<void> {
       undefined,
     );
 
-    // 패턴 분류 표시
-    if (pipeResult.pattern) {
-      process.stdout.write(`\x1b[2m[${pipeResult.pattern.id} ${pipeResult.pattern.name} ${(pipeResult.pattern.score * 100).toFixed(0)}%]\x1b[0m `);
-    }
+    // 패턴 분류 결과는 Orchestrator에서 이미 출력됨
 
     // 세션 저장
     pipeSessionStore.appendMessage(pipeSession, { role: 'user', content: trimmed });

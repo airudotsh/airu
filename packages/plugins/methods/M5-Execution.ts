@@ -6,6 +6,7 @@ import type { IMethod, MethodInput, MethodContext, MethodOutput } from '@airu/co
 
 export class ExecutionMethod implements IMethod {
   readonly id = 'M5';
+  readonly userLabel = '실행';
   readonly name = 'execution';
   readonly description = '계획된 작업 실제 수행, 단계별 실행.';
   readonly category: 'common' | 'project' = 'common';

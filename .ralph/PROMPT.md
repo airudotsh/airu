@@ -1,31 +1,31 @@
-# airu-cli Sprint 1 Ralph Loop
+# Ralph Loop — v0.2 전체 구현 + 프로덕션 출시
 
 ## Goal
-Sprint 1: CLI 채팅 인터페이스 (Commander.js + GLM/Ollama 전환 가능 구조)
+airu-cli v0.2 설계안(DESIGN-v0.2.md)을 전부 구현하고, 로컬 LLM 검증을 반복하며 프로덕션 출시 가능한 단계까지 개선.
 
-## Sprint 1 핵심 원칙
-"코어는 인터페이스+레지스트리만, 구현체는 전부 플러그인"
+## Requirements
+- [x] npm 배포 준비 (package.json 메타데이터, README)
+- [x] rtk 통합 (TerminalTool 자동 래핑)
+- [x] TUI 스캐폴딩 (--tui 플래그)
+- [ ] Phase 1: 패턴 시각화 — IMethod.userLabel, IPattern.steps, Orchestrator 단계별 출력
+- [ ] Phase 2: 지식 영속화 — KnowledgeStore, 세션 요약 저장, Graphify 자동 연동
+- [ ] Phase 3: 커스텀 스킬 — 스킬 파일 파서, SkillRegistry, 패턴 steps 오버라이드
+- [ ] Phase 4: 로컬 LLM 프로덕션 검증 (cli-production-readiness-review 스킬)
+- [ ] Phase 5: 검증 피드백 반영 + 재검증
 
-## 구현 구조
-packages/
-  core/           # 인터페이스, Registry, Config
-    src/
-      interfaces/ # IModelProvider, IChannel, IContext
-      registry.ts # ModelRegistry
-      config.ts   # Config 파서
-  plugins/
-    glm/          # GLM Provider Plugin
-    ollama/       # Ollama Provider Plugin
-  cli/            # Commander.js CLI + 메인 진입점
+## Constraints
+- Language: TypeScript (strict)
+- Runtime: Bun
+- Type-check: bun run typecheck
+- Build: bun run build
+- Test: bun test
+- Verification gate: typecheck + build + test 모두 통과해야 커밋
 
-## 완료 조건
-1. `npx airu chat --model glm-5.1` → GLM 응답
-2. `npx airu chat --model ollama:qwen3.6` → Ollama 응답
-3. `/model glm-5.1` → 런타임 모델 전환
-4. 멀티턴 대화 정상 동작
-5. `/help`, `/exit` 커맨드 동작
-6. `npx airu chat < prompt.txt` → 파이프 모드
-7. airu.config.yaml → 모델/키 설정 가능
+## Completion Criteria
+- v0.2 기능 전부 구현
+- 로컬 LLM 2개 모델 이상 프로덕션 검증 PASS
+- npm publish 가능 상태
 
-## 검증
-Claude Code CLI로 각 기능 테스트 후 다음 Sprint로
+## Cost Budget
+- Max iterations: 20
+- Safety: stuck 3회 시 중단

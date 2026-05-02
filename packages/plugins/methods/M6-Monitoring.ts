@@ -6,6 +6,7 @@ import type { IMethod, MethodInput, MethodContext, MethodOutput } from '@airu/co
 
 export class MonitoringMethod implements IMethod {
   readonly id = 'M6';
+  readonly userLabel = '상태 확인';
   readonly name = 'monitoring';
   readonly description = '실행 과정 추적, 이상 감지, 진행률 측정.';
   readonly category: 'common' | 'project' = 'common';

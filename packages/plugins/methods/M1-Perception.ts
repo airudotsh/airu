@@ -6,6 +6,7 @@ import type { IMethod, MethodInput, MethodContext, MethodOutput } from '@airu/co
 
 export class PerceptionMethod implements IMethod {
   readonly id = 'M1';
+  readonly userLabel = '상황 파악';
   readonly name = 'perception';
   readonly description = '사용자 입력에서 핵심 의도, 감정, 맥락을 추출한다.';
   readonly category: 'common' | 'project' = 'common';
