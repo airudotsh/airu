@@ -96,6 +96,10 @@ cat code.ts | airu chat
 | `/model <name>` | Switch model (from config) |
 | `/provider <name>` | Switch provider (glm, openai, ollama) |
 | `/clear` | Clear conversation history |
+| `/save` | Save current session to knowledge |
+| `/remember <content>` | Save specific content to knowledge |
+| `/knowledge` | List saved knowledge entries |
+| `/skills` | List custom skills |
 | `/tools` | List registered tools |
 | `/methods` | List active methods |
 | `/patterns` | Show pattern classification |

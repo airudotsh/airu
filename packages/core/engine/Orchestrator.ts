@@ -94,7 +94,7 @@ export class Orchestrator {
     model: string,
     messages: Message[],
     userInput: string,
-    options?: { signal?: AbortSignal; confirmTool?: (toolName: string, args: Record<string, unknown>) => Promise<boolean> },
+    options?: { signal?: AbortSignal; confirmTool?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>; silent?: boolean },
   ): Promise<{
     content: string;
     pattern: { id: string; name: string; score: number } | null;
@@ -110,8 +110,8 @@ export class Orchestrator {
       ? { id: classification.pattern.id, name: classification.pattern.name, score: classification.score }
       : null;
 
-    // 사용자 친화적 실행 계획 출력
-    if (classification) {
+    // 사용자 친화적 실행 계획 출력 (파이프 모드에서는 숨김)
+    if (classification && !options?.silent) {
       let patternSteps = classification.pattern.steps();
 
       // 커스텀 스킬 오버라이드
@@ -121,15 +121,15 @@ export class Orchestrator {
       }
 
       const planLine = patternSteps.map(s => s.label).join(' → ');
-      process.stdout.write(`\x1b[36m  분석: ${classification.pattern.name} (${(classification.score * 100).toFixed(0)}%)\x1b[0m\n`);
-      process.stdout.write(`\x1b[2m  계획: ${planLine}${skillLabel ? `  [커스텀: ${skillLabel}]` : ''}\x1b[0m\n\n`);
+      process.stderr.write(`\x1b[36m  분석: ${classification.pattern.name} (${(classification.score * 100).toFixed(0)}%)\x1b[0m\n`);
+      process.stderr.write(`\x1b[2m  계획: ${planLine}${skillLabel ? `  [커스텀: ${skillLabel}]` : ''}\x1b[0m\n\n`);
     }
 
     // 2. 방향 관리 체크
     const directionWarning = this.checkDirection(patternInfo);
 
     if (directionWarning) {
-      process.stdout.write(`\x1b[33m[${directionWarning}]\x1b[0m `);
+      process.stderr.write(`\x1b[33m[${directionWarning}]\x1b[0m `);
     }
 
     // 3. messages 복사본 생성 (원본 불변)

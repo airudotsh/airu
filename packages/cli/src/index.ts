@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * airu-cli - AI 채팅 CLI
  * Sprint 2: 툴 에이전트 루프 + 대화 컨텍스트 압축
@@ -305,13 +305,13 @@ async function runChat(options: ChatOptions): Promise<void> {
     }
 
     if (trimmed === '/knowledge') {
-      const entries = knowledgeStore.search('', 10);
+      const entries = knowledgeStore.listAll(10);
       if (entries.length === 0) {
         console.log('\x1b[2m저장된 지식이 없습니다\x1b[0m');
       } else {
         console.log(`\n\x1b[1m저장된 지식 (${entries.length}개):\x1b[0m`);
         for (const e of entries) {
-          console.log(`  \x1b[33m${e.entry.title}\x1b[0m ${(e.relevance * 100).toFixed(0)}%`);
+          console.log(`  \x1b[33m${e.title}\x1b[0m \x1b[2m${e.type}\x1b[0m`);
         }
         console.log();
       }
@@ -363,7 +363,8 @@ async function runChat(options: ChatOptions): Promise<void> {
         console.log(`\n\x1b[1m활성화된 메서드 (${methods.length}개):\x1b[0m`);
         for (const m of methods) {
           const status = m.category === 'common' ? '\x1b[32m[C]\x1b[0m' : '\x1b[36m[P]\x1b[0m';
-          console.log(`  ${status} \x1b[33m${m.id} ${m.name}\x1b[0m  ${m.description.slice(0, 60)}`);
+          const label = m.userLabel || m.name;
+          console.log(`  ${status} \x1b[33m${m.id}\x1b[0m ${label}`);
         }
         console.log();
         console.log('  \x1b[32m[C]\x1b[0m=common  \x1b[36m[P]\x1b[0m=project');
@@ -376,7 +377,8 @@ async function runChat(options: ChatOptions): Promise<void> {
       const patterns = patternRegistry.list();
       console.log(`\n\x1b[1m등록된 패턴 (${patterns.length}개):\x1b[0m`);
       for (const p of patterns) {
-        console.log(`  \x1b[33m${p.id}\x1b[0m ${p.name}  ${p.description}`);
+        const steps = p.steps().map(s => s.label).join(' → ');
+        console.log(`  \x1b[33m${p.id}\x1b[0m ${p.name}  \x1b[2m${steps}\x1b[0m`);
       }
       console.log();
       return true;
@@ -646,7 +648,7 @@ const program = new Command();
 program
   .name('airu')
   .description('airu-cli - AI 채팅 CLI')
-  .version('1.0.0');
+  .version('0.2.0');
 
 program
   .command('chat')
@@ -705,7 +707,23 @@ async function runPipeMode(): Promise<void> {
   // 파이프 모드 세션/오케스트레이터 재사용 (Sprint 6)
   const pipeSessionStore = new SessionStore();
   const pipeSession = pipeSessionStore.create('pipe');
-  const pipeOrchestrator = new Orchestrator({ methodRegistry, patternRegistry });
+
+  // 파이프 모드에서도 지식/스킬 활성화
+  let pipeProjectName = 'default';
+  try {
+    const gitRemote = execSync('git remote get-url origin 2>/dev/null', { cwd: process.cwd(), stdio: 'pipe' }).toString().trim();
+    const m = gitRemote.match(/([^/]+?)(?:\.git)?$/);
+    if (m) pipeProjectName = m[1];
+  } catch { /* 기본값 사용 */ }
+  const pipeKnowledgeStore = new KnowledgeStore(pipeProjectName);
+  const pipeSkillRegistry = new SkillRegistry(pipeProjectName);
+
+  const pipeOrchestrator = new Orchestrator({
+    methodRegistry,
+    patternRegistry,
+    knowledgeStore: pipeKnowledgeStore,
+    skillRegistry: pipeSkillRegistry,
+  });
   const pipeMessages: Message[] = [];
 
   for (const line of lines) {
@@ -763,7 +781,7 @@ async function runPipeMode(): Promise<void> {
       config.model || 'glm-5.1',
       pipeMessages,
       trimmed,
-      undefined,
+      { silent: true },
     );
 
     // 패턴 분류 결과는 Orchestrator에서 이미 출력됨

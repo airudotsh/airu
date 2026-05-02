@@ -56,7 +56,7 @@ export class SkillRegistry {
     const body = fmMatch[2];
 
     const getString = (key: string): string => {
-      const m = fm.match(new RegExp(`${key}:\\s*([^\\n]+`));
+      const m = fm.match(new RegExp(`${key}:\\s*([^\\n]+)`));
       return m ? m[1].trim() : '';
     };
 
@@ -118,6 +118,10 @@ export class SkillRegistry {
     targetPattern: string;
     steps: string[];
   }): string {
+    // 디렉토리 보장
+    if (!fs.existsSync(this.skillsDir)) {
+      fs.mkdirSync(this.skillsDir, { recursive: true });
+    }
     const filepath = path.join(this.skillsDir, `${data.name}.md`);
     const frontmatter = [
       '---',
@@ -131,7 +135,7 @@ export class SkillRegistry {
 
     const stepsText = data.steps.map((s, i) => `${i + 1}. ${s}`).join('\n');
 
-    fs.writeFileSync(filepath, frontmatter + stepsText, 'utf-8');
+    fs.writeFileSync(filepath, frontmatter + '\n' + stepsText, 'utf-8');
 
     // 리로드
     this.loadAll();

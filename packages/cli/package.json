@@ -1,6 +1,6 @@
 {
   "name": "airu",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI chat CLI with pattern recognition, multi-provider support, and agent loop",
   "type": "module",
   "bin": {

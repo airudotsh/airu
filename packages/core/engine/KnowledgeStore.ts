@@ -116,6 +116,11 @@ export class KnowledgeStore {
     return this.writeEntry(entry);
   }
 
+  /** 전체 지식 목록 (빈 쿼리용) */
+  listAll(limit = 20): KnowledgeEntry[] {
+    return this.readAllEntries().slice(0, limit);
+  }
+
   /** 키워드 기반 지식 검색 */
   search(query: string, limit = 5): KnowledgeSearchResult[] {
     const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 1);
@@ -205,7 +210,7 @@ export class KnowledgeStore {
       '',
     ].join('\n');
 
-    fs.writeFileSync(filepath, frontmatter + entry.content, 'utf-8');
+    fs.writeFileSync(filepath, frontmatter + '\n' + entry.content, 'utf-8');
     return filepath;
   }
 
