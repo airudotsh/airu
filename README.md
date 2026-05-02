@@ -4,18 +4,16 @@ The personalized harness layer for AI coding agents — swap methods, swap tools
 
 ## Quick Start
 
-### Linux / macOS / WSL
+### Install
 
 ```bash
-bun install -g @airu/cli
-airu chat
+npm install -g airu
 ```
 
-### Windows (Native)
+Or use without installing:
 
-```powershell
-bun install -g @airu/cli
-airu chat
+```bash
+npx airu chat
 ```
 
 ### From Source (Development)
@@ -30,7 +28,7 @@ bun run chat
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) >= 1.3 (install: `curl -fsSL https://bun.sh/install | bash`)
+- Node.js >= 18 (install: `curl -fsSL https://fnm.rs/install | bash && fnm install 22`)
 - ZAI GLM API key **or** [Ollama](https://ollama.com) running locally
 
 ## Configure
@@ -128,7 +126,7 @@ airu/
 
 ## Requirements
 
-- Bun >= 1.3 or Node >= 18
+- Node.js >= 18
 - ZAI GLM API key **or** Ollama at `localhost:11434`
 
 ## License
