@@ -14,6 +14,7 @@ import { runAgentLoop } from './Agent';
 import type { IPattern } from '../interfaces/IPattern';
 import { createSkillFromGrowth } from './GrowthSkillGenerator';
 import { KnowledgeStore } from './KnowledgeStore';
+import { SkillRegistry } from './SkillRegistry';
 
 /** 회고 리포트 */
 export interface ReflectionReport {
@@ -53,6 +54,7 @@ export class Orchestrator {
   private readonly methodRegistry: MethodRegistry;
   private readonly guardrailsOptions: OrchestratorOptions;
   private readonly knowledgeStore: KnowledgeStore | null;
+  private readonly skillRegistry: SkillRegistry | null;
 
   // 방향 관리
   private recentPatterns: Array<{ id: string; timestamp: number }> = [];
@@ -71,11 +73,13 @@ export class Orchestrator {
     methodRegistry: MethodRegistry;
     options?: OrchestratorOptions;
     knowledgeStore?: KnowledgeStore;
+    skillRegistry?: SkillRegistry;
   }) {
     this.patternRegistry = options.patternRegistry;
     this.methodRegistry = options.methodRegistry;
     this.guardrailsOptions = options.options ?? {};
     this.knowledgeStore = options.knowledgeStore ?? null;
+    this.skillRegistry = options.skillRegistry ?? null;
 
     this.directionWarnThreshold = options.options?.directionWarnThreshold ?? 5;
     this.enableReflection = options.options?.enableReflection ?? true;
@@ -108,10 +112,17 @@ export class Orchestrator {
 
     // 사용자 친화적 실행 계획 출력
     if (classification) {
-      const patternSteps = classification.pattern.steps();
+      let patternSteps = classification.pattern.steps();
+
+      // 커스텀 스킬 오버라이드
+      const skillLabel = this.skillRegistry?.getSkillLabel(classification.pattern.id);
+      if (this.skillRegistry) {
+        patternSteps = this.skillRegistry.overrideSteps(classification.pattern.id, patternSteps);
+      }
+
       const planLine = patternSteps.map(s => s.label).join(' → ');
       process.stdout.write(`\x1b[36m  분석: ${classification.pattern.name} (${(classification.score * 100).toFixed(0)}%)\x1b[0m\n`);
-      process.stdout.write(`\x1b[2m  계획: ${planLine}\x1b[0m\n\n`);
+      process.stdout.write(`\x1b[2m  계획: ${planLine}${skillLabel ? `  [커스텀: ${skillLabel}]` : ''}\x1b[0m\n\n`);
     }
 
     // 2. 방향 관리 체크

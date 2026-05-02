@@ -19,6 +19,7 @@ import { registerAllPatterns } from '@airu/plugins';
 import { Orchestrator } from '@airu/core';
 import { SessionStore } from '@airu/core';
 import { KnowledgeStore } from '@airu/core';
+import { SkillRegistry } from '@airu/core';
 import { runAgentLoop } from '@airu/core';
 import type {
   IModelProvider,
@@ -67,6 +68,7 @@ const HELP_TEXT = `
   /save            - 현재 세션을 지식베이스에 저장
   /remember <내용>  - 지식 저장
   /knowledge       - 저장된 지식 목록
+  /skills          - 커스텀 스킬 목록
   /help            - 이 도움말 표시
   /exit            - 종료`;
 
@@ -139,12 +141,14 @@ async function runChat(options: ChatOptions): Promise<void> {
       if (match) projectName = match[1];
     } catch { /* 기본값 사용 */ }
     const knowledgeStore = new KnowledgeStore(projectName);
+    const skillRegistry = new SkillRegistry(projectName);
 
     const orchestrator = new Orchestrator({
       patternRegistry,
       methodRegistry,
       options: { enableReflection: true, enableGrowth: true },
       knowledgeStore,
+      skillRegistry,
     });
 
     const sendMessage = async (content: string) => {
@@ -177,6 +181,7 @@ async function runChat(options: ChatOptions): Promise<void> {
     } catch { /* 기본값 사용 */ }
   }
   const knowledgeStore = new KnowledgeStore(projectName);
+  const skillRegistry = new SkillRegistry(projectName);
 
   let activeProvider: IModelProvider;
   try {
@@ -214,6 +219,7 @@ async function runChat(options: ChatOptions): Promise<void> {
     methodRegistry,
     options: { enableReflection: true, enableGrowth: true, directionWarnThreshold: 5 },
     knowledgeStore,
+    skillRegistry,
   });
   const sessionStore = new SessionStore();
   const session = sessionStore.create();
@@ -306,6 +312,20 @@ async function runChat(options: ChatOptions): Promise<void> {
         console.log(`\n\x1b[1m저장된 지식 (${entries.length}개):\x1b[0m`);
         for (const e of entries) {
           console.log(`  \x1b[33m${e.entry.title}\x1b[0m ${(e.relevance * 100).toFixed(0)}%`);
+        }
+        console.log();
+      }
+      return true;
+    }
+
+    if (trimmed === '/skills') {
+      const skills = skillRegistry.list();
+      if (skills.length === 0) {
+        console.log('\x1b[2m등록된 커스텀 스킬이 없습니다\x1b[0m');
+      } else {
+        console.log(`\n\x1b[1m커스텀 스킬 (${skills.length}개):\x1b[0m`);
+        for (const s of skills) {
+          console.log(`  \x1b[33m${s.name}\x1b[0m → ${s.targetPattern} 패턴`);
         }
         console.log();
       }
