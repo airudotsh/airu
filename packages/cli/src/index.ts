@@ -482,6 +482,14 @@ async function runChat(options: ChatOptions): Promise<void> {
 
     // 패턴 분류 결과는 Orchestrator에서 이미 출력됨
 
+    // 응답 출력
+    if (result.content) {
+      process.stdout.write(result.content);
+      process.stdout.write('\n');
+    } else {
+      process.stderr.write('\x1b[2m(빈 응답)\x1b[0m\n');
+    }
+
     // 세션 저장
     sessionStore.appendMessage(session, { role: 'user', content });
     if (result.content) {
@@ -499,9 +507,9 @@ async function runChat(options: ChatOptions): Promise<void> {
 
     // 회고/성장 정보 출력
     if (result.reflection && result.reflection.improvements.length > 0) {
-      process.stdout.write('\n');
+      process.stderr.write('\n');
       for (const imp of result.reflection.improvements) {
-        console.log(`\x1b[2m  > ${imp}\x1b[0m`);
+        process.stderr.write(`\x1b[2m  > ${imp}\x1b[0m\n`);
       }
     }
 
@@ -799,6 +807,12 @@ async function runPipeMode(): Promise<void> {
     );
 
     // 패턴 분류 결과는 Orchestrator에서 이미 출력됨
+
+    // 응답 출력 (stdout only — 파이프 모드)
+    if (pipeResult.content) {
+      process.stdout.write(pipeResult.content);
+      process.stdout.write('\n');
+    }
 
     // 세션 저장
     pipeSessionStore.appendMessage(pipeSession, { role: 'user', content: trimmed });

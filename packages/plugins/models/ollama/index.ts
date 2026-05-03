@@ -99,7 +99,12 @@ export class OllamaProvider implements IModelProvider {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: controller.signal,
+        // SSE 스트리밍이므로 연결 타임아웃만 설정
       });
+
+      // 연결 후 30초간 데이터가 없으면 타임아웃
+      const connectTimeout = setTimeout(() => controller.abort(), 30_000);
+      response.body?.getReader().closed.then(() => clearTimeout(connectTimeout)).catch(() => {});
 
       if (!response.ok) {
         const errorText = await response.text();
