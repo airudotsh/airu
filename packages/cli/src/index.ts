@@ -760,7 +760,16 @@ async function runPipeMode(): Promise<void> {
         const methods = methodRegistry.listEnabled();
         for (const m of methods) {
           const status = m.category === 'common' ? '[C]' : '[P]';
-          console.log(`  ${status} ${m.id} ${m.name}  ${m.description.slice(0, 60)}`);
+          const label = m.userLabel || m.name;
+          console.log(`  ${status} ${m.id} ${label}`);
+        }
+        continue;
+      }
+      if (trimmed === '/patterns') {
+        const patterns = patternRegistry.list();
+        for (const p of patterns) {
+          const steps = p.steps().map((s: { label: string }) => s.label).join(' → ');
+          console.log(`  ${p.id} ${p.name}  ${steps}`);
         }
         continue;
       }
@@ -777,6 +786,57 @@ async function runPipeMode(): Promise<void> {
         }
         for (const s of suggestions) {
           console.log(`  \x1b[36m*\x1b[0m ${s}`);
+        }
+        continue;
+      }
+      if (trimmed === '/save') {
+        const sessionData = pipeMessages
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .map(m => m.content)
+          .filter(Boolean);
+        const summary = sessionData.slice(-6).map((c: string) => c.slice(0, 100)).join(' | ');
+        const usedPatterns = pipeOrchestrator.getGrowthReport().map(g => g.patternId);
+        pipeKnowledgeStore.saveSessionSummary('pipe', {
+          summary: summary.slice(0, 500),
+          learned: [],
+          patterns: usedPatterns,
+          tags: [config.model || 'glm-5.1', config.provider || 'glm'],
+        });
+        console.log('[세션이 지식베이스에 저장되었습니다]');
+        continue;
+      }
+      if (trimmed.startsWith('/remember ')) {
+        const content = trimmed.slice(10).trim();
+        if (content) {
+          pipeKnowledgeStore.saveLearned({
+            topic: content.slice(0, 50),
+            content,
+            patterns: [],
+            tags: [],
+          });
+          console.log('[지식이 저장되었습니다]');
+        }
+        continue;
+      }
+      if (trimmed === '/knowledge') {
+        const entries = pipeKnowledgeStore.listAll(10);
+        if (entries.length === 0) {
+          console.log('저장된 지식이 없습니다');
+        } else {
+          for (const e of entries) {
+            console.log(`  ${e.title} ${e.type}`);
+          }
+        }
+        continue;
+      }
+      if (trimmed === '/skills') {
+        const skills = pipeSkillRegistry.list();
+        if (skills.length === 0) {
+          console.log('등록된 스킬이 없습니다');
+        } else {
+          for (const s of skills) {
+            console.log(`  ${s.name}`);
+          }
         }
         continue;
       }

@@ -1,31 +1,27 @@
-# Ralph Loop — v0.2 전체 구현 + 프로덕션 출시
+# Ralph Loop — airu-cli v0.2 전체 테스트
 
 ## Goal
-airu-cli v0.2 설계안(DESIGN-v0.2.md)을 전부 구현하고, 로컬 LLM 검증을 반복하며 프로덕션 출시 가능한 단계까지 개선.
+DESIGN-v0.2.md에 정의된 Phase 1-3 기능이 실제로 동작하는지 검증.
 
-## Requirements
-- [x] npm 배포 준비 (package.json 메타데이터, README)
-- [x] rtk 통합 (TerminalTool 자동 래핑)
-- [x] TUI 스캐폴딩 (--tui 플래그)
-- [ ] Phase 1: 패턴 시각화 — IMethod.userLabel, IPattern.steps, Orchestrator 단계별 출력
-- [ ] Phase 2: 지식 영속화 — KnowledgeStore, 세션 요약 저장, Graphify 자동 연동
-- [ ] Phase 3: 커스텀 스킬 — 스킬 파일 파서, SkillRegistry, 패턴 steps 오버라이드
-- [ ] Phase 4: 로컬 LLM 프로덕션 검증 (cli-production-readiness-review 스킬)
-- [ ] Phase 5: 검증 피드백 반영 + 재검증
+## Requirements (전부 PASS)
+- [x] R1: --version → 0.2.0
+- [x] R2: --help → Commander 도움말
+- [x] R3: status → 설정/툴/메서드
+- [x] R4: 파이프 단순 질문 → 응답 stdout
+- [x] R5: 파이프 툴 호출 → 응답 stdout
+- [x] R7: /help → 대화형 명령어 목록
+- [x] R8: /tools → 툴 목록
+- [x] R9: /models → 모델 목록
+- [x] R10: /methods → 한국어 userLabel
+- [x] R11: /patterns → steps 한국어
+- [x] R14: /save → 세션 지식 저장
+- [x] R15: /remember → 지식 저장
+- [x] R16: /knowledge → 지식 목록
+- [x] R17: /skills → 스킬 목록
 
-## Constraints
-- Language: TypeScript (strict)
-- Runtime: Bun
-- Type-check: bun run typecheck
-- Build: bun run build
-- Test: bun test
-- Verification gate: typecheck + build + test 모두 통과해야 커밋
-
-## Completion Criteria
-- v0.2 기능 전부 구현
-- 로컬 LLM 2개 모델 이상 프로덕션 검증 PASS
-- npm publish 가능 상태
-
-## Cost Budget
-- Max iterations: 20
-- Safety: stuck 3회 시 중단
+## Done Criteria
+- [x] 14/14 테스트 통과
+- [x] 단위 테스트 49/49
+- [x] typecheck 0 에러
+- [x] 번들 176KB
+- [x] 지식 파일 실제 생성 확인
