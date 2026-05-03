@@ -181,6 +181,7 @@ export class Orchestrator {
     // 4. 툴 에이전트 루프 실행
     const result = await runAgentLoop(provider, model, workingMessages, {
       signal: options?.signal,
+      silent: options?.silent,
       guardrails: {
         maxTimeMs: this.guardrailsOptions.maxTimeMs,
         warnAtIteration: this.guardrailsOptions.warnAtIteration,
@@ -201,6 +202,11 @@ export class Orchestrator {
     if (this.enableReflection && result.metrics) {
       reflection = this.generateReflection(userInput, patternInfo, result.metrics, durationMs);
       this.reflections.push(reflection);
+    }
+
+    // 7. 지식 그래프 자동 갱신
+    if (this.knowledgeStore) {
+      this.knowledgeStore.updateGraph();
     }
 
     return {

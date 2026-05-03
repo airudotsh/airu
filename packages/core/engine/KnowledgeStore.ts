@@ -27,6 +27,8 @@ export class KnowledgeStore {
   private readonly baseDir: string;
   private readonly projectName: string;
   private graph: Map<string, Set<string>> = new Map();
+  /** 프로젝트당 최대 지식 엔트리 수 */
+  static readonly MAX_ENTRIES = 200;
 
   constructor(projectName: string) {
     this.baseDir = path.join(os.homedir(), '.airu', 'knowledge');
@@ -194,6 +196,17 @@ export class KnowledgeStore {
   }
 
   private writeEntry(entry: KnowledgeEntry): string {
+    // 용량 제한: 오래된 엔트리 정리
+    const entries = this.readAllEntries();
+    if (entries.length >= KnowledgeStore.MAX_ENTRIES) {
+      entries.sort((a, b) => a.createdAt - b.createdAt);
+      const toRemove = entries.slice(0, entries.length - KnowledgeStore.MAX_ENTRIES + 1);
+      for (const old of toRemove) {
+        const oldDir = old.type === 'skill' ? this.skillsDir : this.sessionsDir;
+        try { fs.unlinkSync(path.join(oldDir, `${old.id}.md`)); } catch { /* ignore */ }
+      }
+    }
+
     const dir = entry.type === 'skill' ? this.skillsDir : this.sessionsDir;
     const filename = `${entry.id}.md`;
     const filepath = path.join(dir, filename);

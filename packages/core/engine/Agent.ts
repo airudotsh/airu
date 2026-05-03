@@ -22,6 +22,8 @@ export interface ToolCallResult {
 export interface AgentOptions {
   maxToolLoops?: number;
   maxTokensEstimate?: number;
+  /** true면 상태 메시지 숨김 (파이프 모드) */
+  silent?: boolean;
   /** 가드레일 옵션 (Sprint 4) */
   guardrails?: {
     maxIterations?: number;
@@ -211,11 +213,12 @@ export async function runAgentLoop(
   const guardrails = new Guardrails(options.guardrails ?? {});
 
   // 컨텍스트 압축 체크
+  const silent = options.silent ?? false;
   if (estimateTokens(messages) > maxTokens) {
     const compressed = compressContext(messages);
     messages.length = 0;
     messages.push(...compressed);
-    process.stdout.write('\x1b[2m[대화가 압축되었습니다]\x1b[0m ');
+    if (!silent) process.stderr.write('\x1b[2m[대화가 압축되었습니다]\x1b[0m\n');
   }
 
   let assistantContent = '';
@@ -227,15 +230,15 @@ export async function runAgentLoop(
 
     if (reason) {
       if (reason.includes('초과')) {
-        process.stdout.write(`\r\x1b[31m${reason}\x1b[0m\n`);
+        if (!silent) process.stderr.write(`\x1b[31m${reason}\x1b[0m\n`);
         return { content: '', hadError: true, metrics: guardrails.logger.getMetrics() };
       } else {
-        process.stdout.write(`\r\x1b[33m${reason}\x1b[0m `);
+        if (!silent) process.stderr.write(`\x1b[33m${reason}\x1b[0m `);
       }
     }
 
     if (!shouldContinue) {
-      process.stdout.write(`\r\x1b[31m${reason || '가드레일 중단'}\x1b[0m\n`);
+      if (!silent) process.stderr.write(`\x1b[31m${reason || '가드레일 중단'}\x1b[0m\n`);
       return { content: '', hadError: true, metrics: guardrails.logger.getMetrics() };
     }
 
@@ -247,11 +250,11 @@ export async function runAgentLoop(
     if (error) {
       const { shouldRetry, delayMs, message } = await guardrails.handleError(error);
       if (shouldRetry) {
-        process.stdout.write(`\r\x1b[33m${message}\x1b[0m `);
+        if (!silent) process.stderr.write(`\x1b[33m${message}\x1b[0m `);
         if (delayMs > 0) await sleep(delayMs);
         continue;
       } else {
-        process.stdout.write(`\r\x1b[31m${message}\x1b[0m\n`);
+        if (!silent) process.stderr.write(`\x1b[31m${message}\x1b[0m\n`);
         return { content: '', hadError: true, metrics: guardrails.logger.getMetrics() };
       }
     }
@@ -266,8 +269,7 @@ export async function runAgentLoop(
 
     // 툴 콜 없으면 종료
     if (toolCalls.length === 0) {
-      process.stdout.write(assistantContent);
-      process.stdout.write('\n');
+      // 응답은 호출자가 출력 (이중 출력 방지)
       break;
     }
 
@@ -294,8 +296,8 @@ export async function runAgentLoop(
         args = {};
       }
 
-      process.stdout.write('\r\x1b[K');
-      console.log(`\x1b[33m[툴 실행 중: ${tc.name}]${tc.name === 'terminal' ? ` → ${String(args.command || '').slice(0, 80)}` : ''}\x1b[0m`);
+      if (!silent) process.stderr.write('\r\x1b[K');
+      if (!silent) process.stderr.write(`\x1b[33m[툴 실행 중: ${tc.name}]${tc.name === 'terminal' ? ` → ${String(args.command || '').slice(0, 80)}` : ''}\x1b[0m\n`);
 
       // 툴 실행 승인 (대화형 모드에서만)
       if (options.confirmTool) {
@@ -318,7 +320,7 @@ export async function runAgentLoop(
       if (!result.success && result.error) {
         const { shouldRetry, delayMs, message } = await guardrails.handleError(result.error);
         if (shouldRetry) {
-          process.stdout.write(`\r\x1b[33m${message}\x1b[0m `);
+          if (!silent) process.stderr.write(`\x1b[33m${message}\x1b[0m `);
           if (delayMs > 0) await sleep(delayMs);
           // 재시도: 같은 툴 한 번 더 — 성공하면 그 결과 사용
           const retryResult = await executeToolCall(tc.name, args);
@@ -338,7 +340,7 @@ export async function runAgentLoop(
       });
     }
 
-    process.stdout.write('\x1b[35m...\x1b[0m ');
+    if (!silent) process.stderr.write('\x1b[35m...\x1b[0m ');
   }
 
   if (assistantContent) {

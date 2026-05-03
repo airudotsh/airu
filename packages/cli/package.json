@@ -21,13 +21,15 @@
   "author": "Airu",
   "license": "MIT",
   "files": ["dist/"],
-  "dependencies": {
+  "dependencies": {},
+  "optionalDependencies": {
     "ink": "^7.0.1",
     "react": "^19.2.5"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "bun build src/index.ts --outfile dist/cli.js --target node && node -e \"const f='dist/cli.js';const c=require('fs').readFileSync(f,'utf8');require('fs').writeFileSync(f,c.replace('#!/usr/bin/env bun','#!/usr/bin/env node'))\"",
+    "prepublishOnly": "cd ../.. && bun run build && bun run typecheck && bun test",
+    "build": "bun build src/index.ts --outfile dist/cli.js --target node --external ink --external react --external react-devtools-core && node -e \"const f='dist/cli.js';const c=require('fs').readFileSync(f,'utf8');require('fs').writeFileSync(f,c.replace('#!/usr/bin/env bun','#!/usr/bin/env node'))\"",
     "chat": "bun run src/index.ts chat"
   },
   "devDependencies": {

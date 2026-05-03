@@ -781,7 +781,21 @@ async function runPipeMode(): Promise<void> {
       config.model || 'glm-5.1',
       pipeMessages,
       trimmed,
-      { silent: true },
+      {
+        silent: true,
+        confirmTool: async (toolName: string, args: Record<string, unknown>) => {
+          // 파이프 모드: 위험한 명령어는 자동 거부
+          if (toolName === 'terminal') {
+            const cmd = String(args.command || '');
+            const dangerous = /^(rm\s|sudo\s|chmod\s|mkfs|dd\s|>\s|curl\s.*\|\s*sh|wget.*\|\s*sh)/i.test(cmd);
+            if (dangerous) {
+              process.stderr.write(`\x1b[31m[보안] 파이프 모드에서 위험한 명령 차단: ${cmd.slice(0, 80)}\x1b[0m\n`);
+              return false;
+            }
+          }
+          return true;
+        },
+      },
     );
 
     // 패턴 분류 결과는 Orchestrator에서 이미 출력됨

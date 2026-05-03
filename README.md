@@ -1,138 +1,58 @@
 # airu
 
-The personalized harness layer for AI coding agents — swap methods, swap tools, keep your flow.
+AI 에이전트 하네스. 로컬 LLM + 툴 호출 + 지식 영속화 + 메서드/패턴 시스템.
 
-## Quick Start
-
-### Install
+## 설치
 
 ```bash
 npm install -g airu
 ```
 
-Or use without installing:
+## 사용법
 
 ```bash
-npx airu chat
+# 대화형 모드
+airu
+
+# 파이프 모드 (stdin → stdout)
+echo "현재 디렉토리 파일 목록" | airu
+
+# TUI 모드 (ink 기반)
+airu --tui
 ```
 
-### From Source (Development)
+## 명령어 (대화형 모드)
 
-```bash
-git clone https://github.com/airudotsh/airu.git
-cd airu
-bun install
-bun run build
-bun run chat
-```
+| 명령 | 설명 |
+|------|------|
+| `/save` | 현재 세션 요약을 지식에 저장 |
+| `/remember <내용>` | 특정 내용을 지식에 저장 |
+| `/knowledge` | 저장된 지식 목록 조회 |
+| `/skills` | 등록된 스킬 목록 조회 |
+| `/methods` | 사용 가능한 메서드 조회 |
+| `/patterns` | 패턴 목록과 단계 조회 |
 
-## Prerequisites
-
-- Node.js >= 18 (install: `curl -fsSL https://fnm.rs/install | bash && fnm install 22`)
-- ZAI GLM API key **or** [Ollama](https://ollama.com) running locally
-
-## Configure
-
-airu stores all config in `~/.airu/`. First run creates it automatically.
-
-### API Key
-
-Create `~/.airu/.env`:
-
-```bash
-ZAI_GLM_KEY=your_key_here
-```
-
-```bash
-chmod 600 ~/.airu/.env   # Linux/macOS only
-```
-
-### Model Configuration
-
-Edit `~/.airu/airu.config.yaml`:
-
-```yaml
-# Default provider
-provider: glm
-model: glm-5.1
-
-# Switch between models with /model <name>
-models:
-  glm:
-    provider: glm
-    model: glm-5.1
-  openai:
-    provider: openai
-    model: gpt-4o
-  ollama-qwen:
-    provider: ollama
-    model: qwen3.6:35b-a3b
-    ollamaUrl: http://localhost:11434
-  ollama-gemma:
-    provider: ollama
-    model: gemma4:26b
-    ollamaUrl: http://localhost:11434
-```
-
-## Usage
-
-### Interactive Chat
-
-```bash
-airu chat
-```
-
-### Pipe Mode
-
-```bash
-echo "list files in src/" | airu chat
-cat code.ts | airu chat
-```
-
-### In-Chat Commands
-
-| Command | Description |
-|---------|-------------|
-| `/model <name>` | Switch model (from config) |
-| `/provider <name>` | Switch provider (glm, openai, ollama) |
-| `/clear` | Clear conversation history |
-| `/save` | Save current session to knowledge |
-| `/remember <content>` | Save specific content to knowledge |
-| `/knowledge` | List saved knowledge entries |
-| `/skills` | List custom skills |
-| `/tools` | List registered tools |
-| `/methods` | List active methods |
-| `/patterns` | Show pattern classification |
-| `/reflect` | Show recent reflection reports |
-| `/growth` | Show growth tracking status |
-| `/exit` | Exit |
-
-## Architecture
+## `~/.airu/` 디렉토리 구조
 
 ```
-airu/
-├── packages/
-│   ├── core/        # Zero-dependency core
-│   │   ├── interfaces/  # IModelProvider, ITool, IMethod, IPattern
-│   │   ├── registry/    # ModelRegistry, MethodRegistry, PatternRegistry
-│   │   └── engine/      # Agent, Orchestrator, Guardrails, SessionStore
-│   ├── plugins/     # All implementations
-│   │   ├── models/  # GLM, OpenAI, Ollama
-│   │   ├── methods/ # M1~M11 (Perception, Reasoning, Judgment...)
-│   │   ├── patterns/ # P1~P18 (18 reactive patterns)
-│   │   └── tools/   # terminal, file, web
-│   └── cli/         # Command-line interface
-└── config/
-    └── default.yaml
+~/.airu/
+├── .env                    # API 키 (GLM_API_KEY 등)
+├── knowledge/              # 지식 베이스 (Obsidian 호환 마크다운)
+│   └── project-{name}/
+│       ├── session-{id}.md # 세션 요약
+│       └── learned-{id}.md # 학습한 내용
+└── skills/                 # 커스텀 스킬
+    └── {skill-name}.md     # 패턴 steps 오버라이드
 ```
 
-**Pipeline:** User Input → Pattern Classification (P1~P18) → Method Selection (M1~M11) → Tool Agent Loop → Guardrails → Reflection + Growth Tracking
+## 설정
 
-## Requirements
+`~/.airu/.env` 파일에 API 키를 설정합니다:
 
-- Node.js >= 18
-- ZAI GLM API key **or** Ollama at `localhost:11434`
+```env
+GLM_API_KEY=your-key-here
+```
 
-## License
+## 라이선스
 
-MIT
+ISC
